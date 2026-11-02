@@ -1,0 +1,11 @@
+execute_process(COMMAND "${GUI}" -platform offscreen -o "${LOG},txt"
+    RESULT_VARIABLE result TIMEOUT 70)
+if(EXISTS "${LOG}")
+    file(READ "${LOG}" details)
+else()
+    set(details "No Qt test log was written.")
+endif()
+if(NOT "${result}" STREQUAL "0")
+    message(FATAL_ERROR "Qt workbench tests failed (${result}):\n${details}")
+endif()
+message(STATUS "${details}")

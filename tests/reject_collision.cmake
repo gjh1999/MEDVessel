@@ -1,0 +1,10 @@
+if(NOT EXISTS "${INPUT}")
+    message(FATAL_ERROR "Missing generated input fixture")
+endif()
+file(SHA256 "${INPUT}" before)
+execute_process(COMMAND "${CLI}" "${INPUT}" "${OUTPUT}"
+    RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr)
+file(SHA256 "${INPUT}" after)
+if(NOT result EQUAL 1 OR NOT stderr MATCHES "overwrite input" OR NOT before STREQUAL after)
+    message(FATAL_ERROR "Input collision was not safely rejected: ${result}: ${stderr}")
+endif()

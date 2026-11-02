@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>三维医学血管分析系统｜C++ 项目方案</title>
+<style>
+:root{
+  --bg:#f3f6fb;--surface:#fff;--ink:#182338;--muted:#617089;--line:#e1e7f0;
+  --blue:#2857c5;--blue-soft:#edf2ff;--teal:#087e83;--green:#18794e;
+  --green-soft:#eaf7ef;--amber:#a45b12;--amber-soft:#fff5e8;
+  --nav:#142239;--shadow:0 10px 28px rgba(25,43,70,.07);--radius:16px;--max:1280px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:82px}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.75 "Segoe UI","Microsoft YaHei",Arial,sans-serif}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+code,pre{font-family:Consolas,"SFMono-Regular",monospace}
+code{background:#eef2f8;padding:2px 5px;border-radius:5px;font-size:.92em}
+.topbar{position:sticky;top:0;z-index:10;background:rgba(20,34,57,.97);color:#fff;backdrop-filter:blur(10px)}
+.topbar-inner{max-width:var(--max);margin:auto;padding:11px 22px;display:flex;align-items:center;gap:16px}
+.brand{font-weight:800;letter-spacing:.2px}.brand span{color:#91b4ff}
+.top-note{margin-left:auto;color:#bac8dc;font-size:12px}
+.print{border:1px solid #61718a;background:#223653;color:white;border-radius:9px;padding:8px 12px;cursor:pointer}
+.layout{max-width:var(--max);margin:26px auto;padding:0 22px;display:grid;grid-template-columns:238px minmax(0,1fr);gap:24px;align-items:start}
+nav{position:sticky;top:72px;background:var(--nav);color:#fff;border-radius:15px;padding:17px 12px;max-height:calc(100vh - 90px);overflow:auto;box-shadow:var(--shadow)}
+.nav-title{font-size:11px;letter-spacing:1.4px;color:#8799b3;padding:0 10px 10px}
+nav a{display:block;color:#c6d2e2;padding:6px 10px;border-radius:8px;font-size:12.5px}
+nav a:hover,nav a.active{background:#2a3d5c;color:white;text-decoration:none}
+main{min-width:0}
+.hero{background:linear-gradient(125deg,#14243c,#204779 70%,#176879);color:white;border-radius:21px;padding:36px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.hero:after{content:"";position:absolute;width:330px;height:330px;border:1px solid #ffffff20;border-radius:50%;right:-110px;top:-150px;box-shadow:0 0 0 35px #ffffff08,0 0 0 75px #ffffff06}
+.eyebrow{font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:#a9c8ff;font-weight:800}
+h1{font-size:clamp(27px,4vw,40px);line-height:1.25;margin:12px 0 14px;max-width:850px}
+.hero p{color:#d9e5f4;max-width:800px;margin:0 0 20px;font-size:16px}
+.pills{display:flex;flex-wrap:wrap;gap:8px}.pill{font-size:11px;border:1px solid #ffffff30;background:#ffffff12;color:#eef5ff;padding:5px 10px;border-radius:99px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:25px;max-width:780px}
+.stat{padding:12px 14px;border:1px solid #ffffff22;background:#ffffff0d;border-radius:12px}
+.stat b{display:block;font-size:17px}.stat span{font-size:11px;color:#c4d4e8}
+.section{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:0 3px 14px #1c345008}
+.kicker{font-size:10px;font-weight:800;letter-spacing:1.4px;color:var(--blue);text-transform:uppercase;margin-bottom:5px}
+h2{font-size:22px;line-height:1.35;margin:0 0 12px;display:flex;gap:10px;align-items:center}
+h3{font-size:16px;margin:22px 0 7px}
+p{margin:8px 0;color:#344258}
+.lead{color:var(--muted);font-size:14px}
+.num{width:28px;height:28px;display:inline-grid;place-items:center;flex:none;border-radius:9px;background:var(--blue-soft);color:var(--blue);font-size:12px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:12px;padding:15px;background:#fff}
+.card h3{margin:0 0 6px;font-size:15px}.card p{font-size:13px;color:var(--muted);margin:4px 0}
+.tag{display:inline-block;padding:3px 8px;border-radius:99px;font-size:10px;font-weight:750;background:#eef2f7;color:#53627a;margin:2px 4px 2px 0}
+.tag.green{background:var(--green-soft);color:var(--green)}.tag.blue{background:var(--blue-soft);color:var(--blue)}.tag.amber{background:var(--amber-soft);color:var(--amber)}
+.callout{margin:14px 0;padding:12px 15px;border-left:4px solid var(--blue);background:var(--blue-soft);border-radius:0 9px 9px 0;color:#2b416e}
+.callout.good{border-color:#249565;background:var(--green-soft);color:#19583d}
+.callout.warn{border-color:#d68b35;background:var(--amber-soft);color:#70410e}
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.flow div{background:#f7f9fd;border:1px solid var(--line);padding:13px;border-radius:11px}
+.flow b{display:block;font-size:13px}.flow span{display:block;font-size:11px;color:var(--muted);margin-top:4px}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12.5px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#f5f7fb;color:#43536b}
+.math{margin:11px 0;padding:12px 15px;background:#f7f9fc;border:1px solid var(--line);border-radius:10px;font:16px/1.8 Georgia,"Times New Roman",serif;overflow-x:auto;color:#17263e}
+.math small{font:11px "Segoe UI","Microsoft YaHei",sans-serif;color:var(--muted)}
+pre{background:#101b2c;color:#e7eefb;padding:15px;border-radius:11px;overflow:auto;font-size:12px;line-height:1.6}
+pre code{background:none;color:inherit;padding:0}
+ul{padding-left:21px;color:#344258}li{margin:5px 0}
+.checks{list-style:none;padding:0}.checks li{position:relative;padding-left:24px;font-size:13px}.checks li:before{content:"□";position:absolute;left:0;color:var(--teal);font-size:17px;top:-2px}
+.timeline{border-left:2px solid #d9e3f0;margin:15px 0 0 9px;padding-left:22px}
+.phase{position:relative;padding:0 0 18px}.phase:before{content:"";position:absolute;left:-29px;top:5px;width:12px;height:12px;border-radius:50%;background:var(--blue);border:3px solid #eaf0ff}
+.phase h3{margin:0 0 4px}.phase p{font-size:13px;color:var(--muted);margin:4px 0}
+.small{font-size:11px;color:var(--muted)}
+.footer{text-align:center;color:#7b899e;font-size:11px;padding:28px 0 42px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}nav{position:relative;top:auto;max-height:none;display:grid;grid-template-columns:repeat(2,1fr)}.nav-title{grid-column:1/-1}}
+@media(max-width:620px){.layout{padding:0 11px;margin:13px auto}.hero{padding:24px 20px}.section{padding:19px 16px}.grid2,.grid3{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.stats{grid-template-columns:1fr}.top-note{display:none}h2{font-size:19px}}
+@media print{body{background:#fff}.topbar,nav,.print{display:none!important}.layout{display:block;max-width:none;margin:0;padding:0}.hero,.section{box-shadow:none;break-inside:avoid}.hero{print-color-adjust:exact;-webkit-print-color-adjust:exact}.section{margin-top:12px}}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <div class="brand">MED<span>Vessel</span> · 项目方案</div>
+  <div class="top-note">C++17 · 传统医学图像处理 · 技术设计文档</div>
+  <button class="print" onclick="window.print()">打印 / 导出 PDF</button>
+</div></header>
+
+<div class="layout">
+<nav aria-label="页面目录">
+  <div class="nav-title">PROJECT CONTENTS</div>
+  <a href="#implementation-status">当前实现与复现</a>
+  <a href="#overview">项目概览</a>
+  <a href="#problem">要解决的问题</a>
+  <a href="#pipeline">总体算法流程</a>
+  <a href="#data">数据与医学空间</a>
+  <a href="#frangi">01 · Hessian / Frangi</a>
+  <a href="#segmentation">02 · 血管分割</a>
+  <a href="#centerline">03 · 中心线提取</a>
+  <a href="#geometry">04 · 几何分析</a>
+  <a href="#engineering">C++ 工程设计</a>
+  <a href="#dataset">数据集与评估</a>
+  <a href="#roadmap">开发计划</a>
+  <a href="#references">参考 GitHub 项目</a>
+  <a href="#interview">项目成果与面试表达</a>
+</nav>
+
+<main>
+<section class="hero" id="overview">
+  <div class="eyebrow">C++ Medical Imaging Project · Technical Proposal</div>
+  <h1>基于 C++ 的三维医学血管增强、分割与几何分析系统</h1>
+  <p>从 CTA 三维体数据出发，独立实现三维 Gaussian 导数卷积、Hessian 矩阵、Jacobi 特征值分解、多尺度 Frangi 血管增强、传统分割、骨架提取与血管几何测量。</p>
+  <div class="pills">
+    <span class="pill">C++17</span><span class="pill">Traditional Image Processing</span>
+    <span class="pill">3D Volume</span><span class="pill">No Deep Learning</span>
+    <span class="pill">Core Algorithms Self-Implemented</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>4 个核心模块</b><span>增强 · 分割 · 中心线 · 几何分析</span></div>
+    <div class="stat"><b>8 周建议节奏</b><span>阶段交付，难点允许延长</span></div>
+    <div class="stat"><b>可量化验证</b><span>合成 Phantom + 公开 CTA 数据</span></div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="kicker">Project summary</div>
+  <h2><span class="num">01</span> 项目定位与目标</h2>
+  <p>开发一套面向三维 CT 血管造影（CTA）的传统医学图像处理系统。输入 DICOM 序列或 NIfTI 体数据，输出血管增强响应图、血管分割 Mask、中心线图结构，以及血管长度、局部直径、截面积、分支角度和曲率等几何信息。</p>
+  <div class="grid3">
+    <div class="card"><h3>算法深度</h3><p>自行实现 Hessian、对称矩阵特征值分解、Frangi、区域生长、距离变换和骨架图分析。</p></div>
+    <div class="card"><h3>医学影像工程</h3><p>正确处理体素间距、图像方向、物理坐标、DICOM 元数据和三维内存布局。</p></div>
+    <div class="card"><h3>工程可验证</h3><p>提供单元测试、合成数据、公开数据集实验、性能基准和可复现参数。</p></div>
+  </div>
+  <div class="callout good"><b>项目定位：</b>研究型工程 Demo，用于展示传统医学影像算法与 C++ 工程能力，不是临床诊断产品，不用于患者诊断或治疗决策。</div>
+</section>
+
+<section class="section" id="implementation-status">
+  <div class="kicker">Implementation status · 2026-11-02</div>
+  <h2>当前实现、验证范围与使用入口</h2>
+  <p><b>初次了解项目：</b>请先阅读<a href="medvessel_learning_guide.html">整合版项目学习网页</a>，先看总体概览，再按需切换到深入学习。本页保留原开发计划。</p>
+  <p>本页保留原开发方案；本节补充当前代码状态，后文规划内容不代表均已实现。以下为静态记录，不随构建自动更新。</p>
+  <div class="callout good"><b>已跑通的主流程：</b>NIfTI / 经典 DICOM CT 读取 → 可选 ROI → Gaussian 导数 / Hessian → Jacobi → 多尺度 Frangi → 种子或双阈值分割 → EDT → 顺序细化 → 分支图 → 几何报告和预览。</div>
+  <table><thead><tr><th>验证内容</th><th>当前证据</th><th>范围</th></tr></thead><tbody>
+    <tr><td>工程与测试</td><td>CMake 构建成功，启用 Qt 后 27 个 CTest 项通过</td><td>本机 Windows / GCC；DICOM 使用生成序列验证</td></tr>
+    <tr><td>合成数据</td><td>直管、弯曲、Y 型、带噪斜管全流程；直管 Dice 约 0.957</td><td>有几何真值，仍有离散测量误差</td></tr>
+    <tr><td>真实冠脉样例</td><td>ImageCAS 病例 1 + ImageCAS-X v2：Dice 0.816、clDice 0.875、HD95 2.74 mm</td><td>109×109×81 局部开发区域，ROI 和种子由参考标签辅助选择</td></tr>
+    <tr><td>桌面入口</td><td>Qt 6 参数工作台、异步任务/停止、投影、分支表及配置保存</td><td><a href="gui.md">使用说明</a>；交互切片与 VTK 三维尚未实现</td></tr>
+    <tr><td>后续工作</td><td>独立多病例评估、复杂骨架稳定性、大体积性能/内存、切片交互与 VTK 三维</td><td>尚未完成，不能将当前样例解释为全图自动分割性能</td></tr>
+  </tbody></table>
+  <div class="callout warn"><b>“跑通”指算法闭环可运行：</b>当前是研究型 CLI Demo；还没有完成原方案所有阶段。真实样例使用了参考辅助输入，不是独立测试成绩，仍有细支漏分、端部过分割和多余骨架分支。</div>
+  <div class="grid2">
+    <div class="card"><h3>构建与运行</h3><p><a href="README.md">文档入口</a> · <a href="build_windows.md">Windows 构建</a> · <a href="user_guide.md">使用手册与完整参数</a></p><p><a href="output_formats.md">输出字段、单位和空值约定</a></p></div>
+    <div class="card"><h3>设计与证据</h3><p><a href="architecture.md">架构与接口</a> · <a href="algorithms.md">算法约定</a></p><p><a href="reference_data.md">数据获取与实验复现</a> · <a href="validation.md">验证记录</a> · <a href="progress.md">剩余工作</a></p></div>
+  </div>
+  <h3>本机真实样例复现</h3>
+  <pre><code># 先按构建文档准备依赖并完成 C++ 构建，在项目根目录执行：
+&amp; ./tools/run_imagecas_sample.ps1 -PlotPython C:/Users/1/anaconda3/python.exe
+# 无需 PNG 时可省略 -PlotPython；仍输出 NIfTI、CSV、JSON 和 SVG。</code></pre>
+  <p>结果保存在 <code>build/imagecas-x-case1/result</code>。数据、构建产物和图像不提交版本管理；需在本机复现后查看 <a href="../build/imagecas-x-case1/result/comparison.png">冠脉对照图</a>，并保留 <code>roi.json</code>、<code>experiment.json</code> 和参数记录。</p>
+</section>
+
+<section class="section" id="problem">
+  <div class="kicker">Problem definition</div>
+  <h2><span class="num">02</span> 项目要解决的实际问题</h2>
+  <p>血管在 CTA 中表现为三维管状结构，但实际图像中存在噪声、灰度不均、血管粗细变化、弯曲和分叉。骨骼、钙化、静脉及邻近增强组织也可能产生相似高灰度响应。因此，简单阈值无法稳定地区分血管与背景。</p>
+  <div class="grid2">
+    <div class="card"><h3>血管增强</h3><p>利用局部二阶结构和多尺度分析，突出细长管状结构，降低片状结构与平坦背景响应。</p></div>
+    <div class="card"><h3>血管分割</h3><p>结合血管增强响应、用户种子、区域生长和连通性约束，提取目标血管区域。</p></div>
+    <div class="card"><h3>中心线与拓扑</h3><p>从三维 Mask 提取中心线，识别端点、分叉点和分支关系，尽量保持真实连通结构。</p></div>
+    <div class="card"><h3>几何定量</h3><p>基于患者物理坐标计算血管长度、直径、截面积、分支角度与曲率。</p></div>
+  </div>
+  <div class="callout warn"><b>范围控制：</b>第一版只选择一种 CTA 场景，例如冠状动脉 CTA 或脑血管 CTA。不要一开始同时覆盖冠脉、脑血管、肺血管和 MRA。</div>
+</section>
+
+<section class="section" id="pipeline">
+  <div class="kicker">Algorithm pipeline</div>
+  <h2><span class="num">03</span> 总体算法流程</h2>
+  <div class="flow">
+    <div><b>1. 数据读取与预处理</b><span>DICOM/NIfTI、HU、方向、spacing、ROI、重采样</span></div>
+    <div><b>2. 三维血管增强</b><span>Gaussian Derivative、Hessian、Eigen Solver、Frangi</span></div>
+    <div><b>3. 血管分割</b><span>NMS、双阈值、Seeded Region Growing、连通域</span></div>
+    <div><b>4. 中心线与几何</b><span>Distance Transform、Thinning、Graph、Diameter、Branch</span></div>
+  </div>
+  <h3>各模块输入与输出</h3>
+  <table><thead><tr><th>模块</th><th>输入</th><th>输出</th><th>关键检查</th></tr></thead><tbody>
+    <tr><td>预处理</td><td>原始 CTA Volume</td><td>标准化 Volume + Geometry</td><td>HU、方向、spacing、单位</td></tr>
+    <tr><td>Frangi</td><td>Volume + sigma 列表</td><td>Vesselness + BestScale</td><td>响应范围、亮/暗管符号</td></tr>
+    <tr><td>分割</td><td>原图 + Vesselness + Seeds</td><td>Binary Mask</td><td>泄漏、连通性、细分支保留</td></tr>
+    <tr><td>中心线</td><td>Mask + Geometry</td><td>Skeleton + Graph</td><td>拓扑保持、分叉点聚类</td></tr>
+    <tr><td>几何分析</td><td>Centerline + Mask + EDT</td><td>Branch Metrics</td><td>毫米单位、截面方向、测量稳定性</td></tr>
+  </tbody></table>
+</section>
+
+<section class="section" id="data">
+  <div class="kicker">Medical image fundamentals</div>
+  <h2><span class="num">04</span> 三维数据结构与医学物理坐标</h2>
+  <p>医学影像不是普通二维图片。每个体素除了数组索引，还对应患者空间中的物理位置。长度、直径、角度和曲率必须在物理坐标中计算，不能直接把 voxel index 当作毫米。</p>
+  <div class="math">P<sub>world</sub> = Origin + Direction × (Index ⊙ Spacing)</div>
+  <p class="small">Index = (i,j,k)，Spacing = (sₓ,sᵧ,s<sub>z</sub>)，Direction 为 3×3 方向矩阵，⊙ 表示逐元素乘法。</p>
+  <h3>Volume3D 基础结构</h3>
+  <pre><code>template&lt;typename T&gt;
+struct Volume3D {
+    int width, height, depth;
+    std::array&lt;double, 3&gt; spacing;
+    std::array&lt;double, 3&gt; origin;
+    std::array&lt;double, 9&gt; direction;
+    std::vector&lt;T&gt; data;
+
+    // 示例连续内存布局：
+    // index = (z * height + y) * width + x
+};</code></pre>
+  <h3>DICOM / NIfTI 读取注意事项</h3>
+  <ul>
+    <li>使用 DCMTK 或 GDCM 负责 DICOM 解析，不从零实现完整 DICOM 标准。</li>
+    <li>DICOM 切片不能仅按文件名排序；应结合 ImagePositionPatient 与 ImageOrientationPatient 计算切片法向量并排序。</li>
+    <li>读取 Pixel Spacing、Slice Spacing、Image Orientation、Image Position 等元数据。</li>
+    <li>CT 像素值结合 Rescale Slope 和 Rescale Intercept 转换为 HU，并处理异常序列。</li>
+    <li>明确患者坐标系、数组轴顺序和左右/前后/头脚方向，禁止静默翻转数据。</li>
+  </ul>
+  <div class="callout"><b>开发建议：</b>先支持 NIfTI 输入，验证 Volume3D 和 Geometry；再增加 DICOM Series Reader，把格式解析与算法开发分离。</div>
+  <h3>各向异性体素</h3>
+  <p>CT 的层间距和面内像素间距往往不同。Gaussian sigma、距离变换、长度、直径和曲率必须考虑 spacing。可以在物理空间使用各向异性卷积，也可以在明确记录插值方法后重采样到近似各向同性网格。</p>
+</section>
+
+<section class="section" id="frangi">
+  <div class="kicker">Core algorithm 01</div>
+  <h2><span class="num">05</span> 三维 Hessian 与多尺度 Frangi 血管增强</h2>
+  <span class="tag green">最高优先级</span><span class="tag blue">核心算法自行实现</span>
+  <p>目标：利用局部二阶结构判断体素邻域是否呈管状形态，增强 CTA 中的血管，抑制平坦背景、片状结构和部分噪声。</p>
+  <h3>5.1 三维 Hessian 矩阵</h3>
+  <div class="math">H(I) = [ I<sub>xx</sub> I<sub>xy</sub> I<sub>xz</sub> ; I<sub>yx</sub> I<sub>yy</sub> I<sub>yz</sub> ; I<sub>zx</sub> I<sub>zy</sub> I<sub>zz</sub> ]</div>
+  <p>Hessian 对称，只需计算六个独立分量。使用 Gaussian 的一阶/二阶导数核与输入体数据卷积，建议使用可分离卷积降低计算量。导数计算考虑物理 spacing；多尺度时明确是否使用 σ²·H 做尺度归一化。</p>
+  <h3>5.2 Jacobi 3×3 对称矩阵特征值分解</h3>
+  <p>自行实现 Jacobi Eigenvalue Algorithm：寻找最大非对角元素、构造平面旋转、执行相似变换、检查收敛、提取特征值和特征向量。特征值排序时必须同步调整特征向量。</p>
+  <pre><code>struct EigenResult3x3 {
+    std::array&lt;double, 3&gt; values;
+    // vectors[i] 必须与 values[i] 对应
+    std::array&lt;std::array&lt;double, 3&gt;, 3&gt; vectors;
+};
+
+EigenResult3x3 jacobiEigenDecomposition(
+    const SymmetricMatrix3x3&amp; hessian
+);</code></pre>
+  <p>按绝对值排序：|λ₁| ≤ |λ₂| ≤ |λ₃|。理想亮管状结构通常满足 |λ₁| 较小、λ₂ 和 λ₃ 为负。实际符号依赖导数定义与灰度极性，必须用合成亮管/暗管 Phantom 验证。</p>
+  <h3>5.3 Frangi Vesselness</h3>
+  <div class="math">
+    R<sub>A</sub> = |λ₂| / (|λ₃| + ε)<br>
+    R<sub>B</sub> = |λ₁| / (√(|λ₂λ₃|) + ε)<br>
+    S = √(λ₁² + λ₂² + λ₃²)
+  </div>
+  <div class="math">
+    V = (1 − exp(−R<sub>A</sub>² / 2α²)) · exp(−R<sub>B</sub>² / 2β²) · (1 − exp(−S² / 2c²))
+  </div>
+  <p>亮血管模式需按特征值符号筛选；暗血管模式切换符号规则。分母加 epsilon 防止数值异常。α、β、c 可配置，c 可根据数据统计量设定，不能认为一组固定参数适用于所有扫描。</p>
+  <h3>5.4 多尺度融合</h3>
+  <div class="math">V(x) = max<sub>σ ∈ Σ</sub> V<sub>σ</sub>(x)，同时保存 BestScale(x)</div>
+  <p>sigma 列表表示目标血管尺度，建议以毫米表达，再根据 spacing 转换为各轴 voxel sigma。每个尺度计算 Hessian、特征值和 Frangi 响应，最终取最大响应并保存对应尺度。</p>
+  <h3>5.5 本模块交付清单</h3>
+  <ul class="checks">
+    <li>Gaussian、Gaussian 一阶导数和二阶导数核生成</li>
+    <li>3D separable convolution 与明确的边界策略</li>
+    <li>Hessian 六个分量计算</li>
+    <li>Jacobi 特征值和特征向量分解</li>
+    <li>特征值绝对值排序、亮/暗管符号判断</li>
+    <li>Frangi 响应、多尺度 max、BestScale</li>
+    <li>合成 Phantom 单元测试和数值稳定性测试</li>
+  </ul>
+  <div class="callout warn"><b>关键算法细节：</b>血管切向通常对应最小绝对值特征值的特征向量。ridge 的 NMS 应沿横截面法向方向比较响应，而不是沿血管切向直接抑制。3D NMS 可在两个横截面主方向采样，并用三线性插值处理非整数坐标。</div>
+</section>
+
+<section class="section" id="segmentation">
+  <div class="kicker">Core algorithm 02</div>
+  <h2><span class="num">06</span> 三维血管分割</h2>
+  <p>Frangi 输出连续 vesselness response，不是最终二值分割。第一版采用“用户种子 + vesselness 双阈值 + 区域生长”的可解释方案，后续再扩展 Level Set / Fast Marching。</p>
+  <h3>6.1 3D Non-Maximum Suppression</h3>
+  <p>利用 Hessian 特征向量确定局部血管切向与横截面方向，在横截面法向方向比较响应，抑制血管周围的非中心响应。三维横截面有两个方向，可沿两个法向分别采样；采样点通常不是整数体素，需要三线性插值。</p>
+  <h3>6.2 Seeded Region Growing</h3>
+  <div class="math">Seed(p) = [V(p) ≥ T<sub>high</sub>]<br>Grow(q) = [V(q) ≥ T<sub>low</sub>] ∧ [IntensityConstraint(q)]</div>
+  <ul>
+    <li>高阈值确定可靠种子，低阈值允许向相邻体素扩张。</li>
+    <li>采用 26 邻域或可配置邻域，队列使用 BFS。</li>
+    <li>使用 visited 标记避免重复入队。</li>
+    <li>可增加灰度范围、ROI、方向连续性或最大跳变约束，减少向骨骼/背景泄漏。</li>
+    <li>阈值和约束参数必须配置化并记录实验结果。</li>
+  </ul>
+  <h3>6.3 3D Connected Components</h3>
+  <p>实现 3D 连通域标记，支持 6/18/26 邻接配置，统计组件体素数、物理体积、包围盒和与种子点的关系。不能简单删除所有小组件，因为真实细小血管分支也可能很小。</p>
+  <h3>6.4 后续扩展：Fast Marching / Level Set</h3>
+  <p>Level Set 用隐式函数 φ(x,y,z,t)=0 表示边界，典型演化形式为 ∂φ/∂t + F|∇φ|=0。后续需研究 upwind finite differences、曲率项、时间步长/CFL 稳定性和重初始化。此部分不属于第一版 MVP。</p>
+</section>
+
+<section class="section" id="centerline">
+  <div class="kicker">Core algorithm 03</div>
+  <h2><span class="num">07</span> 距离变换、三维骨架与中心线图</h2>
+  <p>目标：从血管 Mask 中提取近似单体素宽的中心线，并将骨架压缩成可分析的血管分支图。</p>
+  <h3>7.1 Euclidean Distance Transform</h3>
+  <div class="math">D(p) = min<sub>q ∉ Mask</sub> √[(Δx·sₓ)² + (Δy·sᵧ)² + (Δz·s<sub>z</sub>)²]</div>
+  <p>距离必须考虑各向异性 spacing。建议研究可分离的精确欧氏距离变换算法，而不是对每个前景体素暴力搜索最近背景点。距离场可辅助估计局部半径。</p>
+  <h3>7.2 Topology-preserving 3D Thinning</h3>
+  <p>研究 Lee 等人的 3D 细化方法或其他拓扑保持 thinning。关键不是不断删除边界体素，而是判断候选体素是否为 simple point，删除后不能破坏对象连通性或改变不希望改变的拓扑结构。需要明确前景/背景邻接约定并测试。</p>
+  <h3>7.3 Skeleton 转换为 Graph</h3>
+  <div class="math">G = (V,E)，V 表示端点/分叉节点，E 表示节点之间的骨架路径</div>
+  <table><thead><tr><th>骨架体素邻居数</th><th>初步分类</th><th>处理说明</th></tr></thead><tbody>
+    <tr><td>1</td><td>端点</td><td>通常是血管末端，需排查噪声短枝</td></tr>
+    <tr><td>2</td><td>路径点</td><td>压缩进相邻节点之间的 Edge</td></tr>
+    <tr><td>≥3</td><td>潜在分叉点</td><td>相邻分叉体素聚类成一个节点，不能逐体素认作多个分叉</td></tr>
+  </tbody></table>
+  <pre><code>struct VesselNode {
+    Point3D positionWorld;
+    std::vector&lt;int&gt; adjacentBranches;
+};
+
+struct VesselBranch {
+    int startNodeId;
+    int endNodeId;
+    std::vector&lt;Point3D&gt; centerlineWorld;
+    double lengthMm;
+    double meanRadiusMm;
+};</code></pre>
+  <p>需要处理短枝修剪、环路、断裂、交叉和分叉点聚类。不能只凭 26 邻域度数大于等于 3 就认定为真实分叉。</p>
+</section>
+
+<section class="section" id="geometry">
+  <div class="kicker">Core algorithm 04</div>
+  <h2><span class="num">08</span> 血管几何与定量分析</h2>
+  <h3>8.1 直径与截面积</h3>
+  <p>快速近似：在中心线位置读取 EDT 半径 r≈D(p)，直径 d≈2r。该近似受中心线偏移、非圆形截面和分割误差影响，不能当作精确临床测量。</p>
+  <p>更稳健的方式：估计中心线切向量，构建垂直于切向量的局部截面平面，将原始图像/Mask 重采样到平面，计算截面积 A，并给出等效直径：</p>
+  <div class="math">d<sub>eq</sub> = 2√(A / π)</div>
+  <h3>8.2 长度、分支角度和曲率</h3>
+  <div class="math">L = Σ<sub>i</sub> ||p<sub>i+1</sub> − p<sub>i</sub>||<sub>world</sub></div>
+  <div class="math">θ = arccos((u · v) / (||u|| ||v||))</div>
+  <div class="math">κ = ||r′(t) × r″(t)|| / ||r′(t)||³</div>
+  <p>所有几何计算均使用物理坐标。曲率对噪声敏感，先对中心线做有明确参数的平滑，再计算导数。分支角度应在分叉点附近拟合父/子分支的局部方向，而不是只取紧邻分叉点的单个向量。</p>
+  <h3>8.3 输出报告字段</h3>
+  <table><thead><tr><th>字段</th><th>单位/类型</th><th>说明</th></tr></thead><tbody>
+    <tr><td>branch_id / parent_id</td><td>整数</td><td>血管树分支关系</td></tr>
+    <tr><td>length</td><td>mm</td><td>中心线弧长</td></tr>
+    <tr><td>mean / min / max diameter</td><td>mm</td><td>沿分支的直径统计</td></tr>
+    <tr><td>cross_section_area</td><td>mm²</td><td>指定采样位置的截面积</td></tr>
+    <tr><td>branch_angle</td><td>degree</td><td>父子分支夹角</td></tr>
+    <tr><td>curvature</td><td>1/mm</td><td>中心线局部曲率统计</td></tr>
+  </tbody></table>
+</section>
+
+<section class="section" id="engineering">
+  <div class="kicker">C++ engineering</div>
+  <h2><span class="num">09</span> C++ 工程架构与技术栈</h2>
+  <div class="grid2">
+    <div class="card"><h3>核心算法层</h3><p>C++17；独立 Volume3D、卷积、矩阵、Frangi、分割、骨架和几何模块。</p></div>
+    <div class="card"><h3>数据 I/O 层</h3><p>NIfTI I/O；DCMTK 或 GDCM 读取 DICOM；仅负责格式解析、元数据与体数据转换。</p></div>
+    <div class="card"><h3>性能层</h3><p>OpenMP；先建立单线程正确性基线，再并行化独立体素/切片任务。</p></div>
+    <div class="card"><h3>可视化层（后期）</h3><p>Qt 6 + VTK；负责界面、切片显示和 3D 模型渲染，不把核心算法藏在库调用中。</p></div>
+  </div>
+  <h3>建议目录结构</h3>
+  <pre><code>MedicalVesselAnalysis/
+├── CMakeLists.txt
+├── include/
+│   ├── core/          # Volume3D, Point3D, ImageGeometry
+│   ├── filters/       # Gaussian, Hessian, EigenSolver, Frangi
+│   ├── segmentation/  # NMS, RegionGrowing, ConnectedComponents
+│   ├── skeleton/      # DistanceTransform, Thinning, CenterlineGraph
+│   ├── geometry/      # CrossSection, Diameter, BranchAnalysis
+│   └── io/            # NiftiReader, DicomSeriesReader
+├── src/               # 对应实现
+├── app/               # CLI 入口；GUI 后期增加
+├── tests/             # GoogleTest 单元测试
+├── benchmarks/        # 性能基准
+├── datasets/          # 不提交受限/大型原始数据
+└── docs/              # 算法说明、实验记录、设计决策</code></pre>
+  <h3>依赖原则</h3>
+  <table><thead><tr><th>依赖</th><th>允许用途</th><th>限制</th></tr></thead><tbody>
+    <tr><td>CMake</td><td>构建管理</td><td>必需</td></tr>
+    <tr><td>GoogleTest</td><td>单元测试</td><td>不参与算法实现</td></tr>
+    <tr><td>DCMTK / GDCM</td><td>DICOM 解析</td><td>不使用其分割/滤波替代自研算法</td></tr>
+    <tr><td>NIfTI I/O</td><td>NIfTI 读写</td><td>仅负责文件格式</td></tr>
+    <tr><td>OpenMP</td><td>并行计算</td><td>保留单线程可复现模式</td></tr>
+    <tr><td>VTK</td><td>3D 渲染、网格显示</td><td>不替代自研核心算法</td></tr>
+    <tr><td>Qt 6</td><td>GUI</td><td>MVP 阶段非必需</td></tr>
+    <tr><td>OpenCV / ITK</td><td>可选的独立对照实验</td><td>核心算法路径禁止依赖现成实现</td></tr>
+  </tbody></table>
+  <h3>建议核心接口</h3>
+  <pre><code>Volume3D&lt;float&gt; gaussianFilter3D(
+    const Volume3D&lt;float&gt;&amp; input,
+    const GaussianOptions&amp; options);
+
+HessianVolume hessian3D(
+    const Volume3D&lt;float&gt;&amp; input,
+    const DerivativeOptions&amp; options);
+
+VesselnessResult frangi3D(
+    const Volume3D&lt;float&gt;&amp; input,
+    const FrangiOptions&amp; options);
+
+Volume3D&lt;uint8_t&gt; seededRegionGrowing3D(
+    const Volume3D&lt;float&gt;&amp; vesselness,
+    const Volume3D&lt;float&gt;&amp; source,
+    const std::vector&lt;Point3D&gt;&amp; seeds,
+    const RegionGrowingOptions&amp; options);</code></pre>
+</section>
+
+<section class="section" id="dataset">
+  <div class="kicker">Data & evaluation</div>
+  <h2><span class="num">10</span> 数据集、测试与评价</h2>
+  <h3>10.1 建议数据来源</h3>
+  <div class="card">
+    <h3>ImageCAS-X / 冠状动脉 CTA 数据</h3>
+    <p>可研究其原始 CTA、血管标注及中心线相关资源。使用前应核实数据版本、下载方式、许可条款和标注字段；不要把代码仓库许可证等同于影像数据许可证。</p>
+    <p><a href="https://github.com/kitbransby/ImageCAS-X" target="_blank" rel="noopener">GitHub 项目</a> · <a href="https://kitbransby.github.io/ImageCAS-X/" target="_blank" rel="noopener">项目主页</a> · <a href="https://zenodo.org/records/21887809" target="_blank" rel="noopener">Zenodo 数据记录</a></p>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <h3>VESSEL12 / 肺部 CT 血管相关挑战数据</h3>
+    <p>可用于早期数据读取、算法调试和定性观察。需注意其参考标注并非每个病例都有完整体素级血管金标准，不应在未核实标注覆盖范围时直接用于完整 Dice 评测。</p>
+    <p><a href="https://zenodo.org/records/8055066" target="_blank" rel="noopener">Zenodo 数据记录</a></p>
+  </div>
+  <h3>10.2 合成 Phantom 测试</h3>
+  <p>先构造有几何真值的三维体数据，再进入真实 CTA。建议包含直线血管、弯曲血管、Y 型分叉、不同半径、不同方向、各向异性 spacing 和不同噪声强度。合成数据可用于直接计算中心线和直径误差。</p>
+  <h3>10.3 评价指标</h3>
+  <table><thead><tr><th>指标</th><th>用途</th><th>注意事项</th></tr></thead><tbody>
+    <tr><td>Dice</td><td>分割体素重叠</td><td>细小结构对少量体素误差敏感</td></tr>
+    <tr><td>HD95</td><td>边界距离</td><td>使用毫米单位的物理距离</td></tr>
+    <tr><td>Centerline Distance</td><td>中心线几何误差</td><td>需明确匹配方式和距离定义</td></tr>
+    <tr><td>clDice</td><td>管状结构拓扑/中心线一致性</td><td>不能单独替代几何误差</td></tr>
+    <tr><td>连通分支数量差异</td><td>拓扑结构检查</td><td>同时记录断裂和错误连接</td></tr>
+    <tr><td>Diameter Error</td><td>直径估计误差</td><td>与 Phantom 或可靠标注对照</td></tr>
+  </tbody></table>
+  <div class="callout">所有实验应保存数据版本、病例划分、参数配置、运行环境和结果。对真实标注数据的评价必须遵守其许可和使用规范。</div>
+</section>
+
+<section class="section" id="roadmap">
+  <div class="kicker">Implementation roadmap</div>
+  <h2><span class="num">11</span> 开发计划与阶段交付</h2>
+  <p class="lead">建议按可运行的里程碑推进。时间是规划参考，不应为了赶进度跳过算法验证。</p>
+  <div class="timeline">
+    <div class="phase"><h3>阶段 1 · 三维医学影像基础 <span class="tag blue">第 1 周</span></h3><p>Volume3D、NIfTI 读取、物理坐标转换、spacing、基础重采样、Gaussian Filter。</p><p><b>交付：</b>正确读取和检查一个三维 CTA Volume。</p></div>
+    <div class="phase"><h3>阶段 2 · Hessian 与特征值分解 <span class="tag blue">第 2 周</span></h3><p>Gaussian Derivative、Hessian 六分量、Jacobi Eigen Solver、特征向量和排序。</p><p><b>交付：</b>局部结构分析模块及合成数据测试。</p></div>
+    <div class="phase"><h3>阶段 3 · 多尺度 Frangi <span class="tag blue">第 3 周</span></h3><p>Frangi 响应、多尺度融合、BestScale、亮/暗管模式、响应可视化。</p><p><b>交付：</b>可复现的三维血管增强结果。</p></div>
+    <div class="phase"><h3>阶段 4 · 三维血管分割 <span class="tag blue">第 4–5 周</span></h3><p>NMS、双阈值、Seeded Region Growing、3D Connected Components、基础后处理。</p><p><b>交付：</b>血管 Binary Mask 和分割评估。</p></div>
+    <div class="phase"><h3>阶段 5 · 中心线与几何分析 <span class="tag blue">第 6–7 周</span></h3><p>EDT、3D Thinning、Skeleton Graph、分支路径、直径、长度、角度和曲率。</p><p><b>交付：</b>血管树结构和定量报告。</p></div>
+    <div class="phase"><h3>阶段 6 · 性能优化与可视化 <span class="tag amber">第 8 周及以后</span></h3><p>OpenMP、内存布局优化、性能基准、Qt/VTK 显示、实验文档和演示。</p><p><b>交付：</b>完整可演示的 C++ 医学影像算法 Demo。</p></div>
+  </div>
+</section>
+
+<section class="section" id="references">
+  <div class="kicker">Open-source references</div>
+  <h2><span class="num">12</span> 值得阅读的 GitHub 项目</h2>
+  <div class="grid2">
+    <div class="card"><h3>ThinVesselSegmentation</h3><p>研究血管增强、Hessian、特征值分解和 NMS 的 C++ 参考实现。仓库包含较旧依赖，建议阅读算法，不直接照搬旧工程。</p><a href="https://github.com/yzhong52/ThinVesselSegmentation" target="_blank" rel="noopener">打开 GitHub →</a></div>
+    <div class="card"><h3>VMTK</h3><p>研究血管 Level Set、Fast Marching、中心线、Voronoi 和截面分析。部分高层接口使用 Python，但底层包含 C++ 实现。</p><a href="https://github.com/vmtk/vmtk" target="_blank" rel="noopener">打开 GitHub →</a></div>
+    <div class="card"><h3>ITK</h3><p>作为医学图像处理算法、数据结构和实现细节的参考；本项目核心模块仍自行实现。</p><a href="https://github.com/InsightSoftwareConsortium/ITK" target="_blank" rel="noopener">打开 GitHub →</a></div>
+    <div class="card"><h3>VTK</h3><p>用于后期三维可视化和网格显示，不替代本项目核心血管算法。</p><a href="https://github.com/Kitware/VTK" target="_blank" rel="noopener">打开 GitHub →</a></div>
+  </div>
+</section>
+
+<section class="section" id="interview">
+  <div class="kicker">Deliverables & interview story</div>
+  <h2><span class="num">13</span> 最终交付物与项目介绍</h2>
+  <h3>项目完成后应具备</h3>
+  <ul class="checks">
+    <li>结构清晰、可从干净环境构建的 C++17/CMake 工程</li>
+    <li>核心算法源码、接口文档和数学原理说明</li>
+    <li>单元测试、合成 Phantom 和测试结果</li>
+    <li>真实 CTA 数据实验及可复现参数</li>
+    <li>增强图、分割 Mask、中心线和 3D 几何结果</li>
+    <li>性能基准：单线程与多线程耗时、内存占用</li>
+    <li>已知问题、适用范围和失败案例分析</li>
+  </ul>
+  <h3>完成后的面试介绍示例</h3>
+  <div class="callout">
+    我开发了一套基于 C++ 的三维医学血管分析系统，针对 CTA 中的血管增强、分割和几何分析问题，设计了完整的传统图像处理 Pipeline。核心算法自行实现了三维 Gaussian 导数卷积、Hessian 矩阵构建、3×3 对称矩阵 Jacobi 特征值分解、多尺度 Frangi 血管增强、三维区域生长和骨架图提取，并进一步完成血管长度、局部直径、分支角度和曲率计算。最后通过合成 Phantom 和公开 CTA 数据进行定量验证，并对核心计算进行多线程和内存优化。
+  </div>
+  <p class="small">这段介绍只能在相应功能确实完成、经过测试并有结果支撑后使用。经典算法的独立实现和工程验证有价值，但不应包装成原创医学算法或临床级产品。</p>
+</section>
+
+<section class="section">
+  <div class="kicker">Development principles</div>
+  <h2><span class="num">14</span> 实施原则与风险控制</h2>
+  <ul>
+    <li><b>先正确、后优化：</b>先建立小体积、单线程、可重复的正确性基线，再考虑 OpenMP 和内存优化。</li>
+    <li><b>每个算法都有测试：</b>矩阵特征值、导数卷积、Frangi 符号、距离变换、骨架拓扑都需要独立测试。</li>
+    <li><b>区分参考实现和最终实现：</b>可以使用 ITK/VTK/OpenCV 做独立对照，但核心处理路径不能调用它们的同类现成算法。</li>
+    <li><b>保留失败案例：</b>记录骨骼干扰、钙化、血管粘连、细分支断裂、噪声泄漏等情况，说明当前方法的边界。</li>
+    <li><b>避免过度扩张：</b>第一版不强求 GUI、GPU、Level Set 和所有 DICOM 厂商兼容；先完成算法核心闭环。</li>
+  </ul>
+  <div class="callout good"><b>推荐的第一条开发链路：</b><code>Volume3D → Gaussian Derivative → Hessian → Jacobi Eigen Solver → Frangi</code>。先把这条链路独立实现、测试和跑通，再进入分割与中心线阶段。</div>
+</section>
+
+<div class="footer">MEDVessel · C++ 传统医学影像处理项目方案 · 供个人学习、工程实现与面试展示使用</div>
+</main>
+</div>
+<script>
+const links=[...document.querySelectorAll('nav a')];
+const sections=links.map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+const observer=new IntersectionObserver(entries=>{
+  entries.forEach(entry=>{
+    if(entry.isIntersecting){
+      links.forEach(a=>a.classList.toggle('active',a.getAttribute('href')==='#'+entry.target.id));
+    }
+  });
+},{rootMargin:'-18% 0px -72% 0px'});
+sections.forEach(s=>observer.observe(s));
+</script>
+</body>
+</html>

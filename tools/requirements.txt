@@ -1,0 +1,2 @@
+# Optional format-conversion helper; the C++ algorithms do not depend on Python.
+SimpleITK==2.5.7
