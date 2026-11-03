@@ -1,4 +1,4 @@
-"""Build the offline, two-level project handbook from its teaching template and docs."""
+"""Build the offline overview, algorithm lessons, and separate Qt handbook."""
 import base64
 from html import escape
 from pathlib import Path
@@ -50,6 +50,11 @@ def markdown(text, anchor):
     while index < len(lines):
         line = lines[index]
         if not line.strip():
+            index += 1
+            continue
+        graphic = re.fullmatch(r'!\[([^\]]+)\]\(figures/([^/)]+\.svg)\)', line.strip())
+        if graphic:
+            result.append('<div class="diagram-scroll">' + inline_svg(graphic[2], graphic[1], graphic[1] + '；窄屏可横向滑动查看。') + '</div>')
             index += 1
             continue
         if line.startswith("```"):
@@ -109,26 +114,97 @@ def markdown(text, anchor):
     return "\n".join(result)
 
 
+def fold_sections(body):
+    """Keep existing deep links while making each generated lesson opt-in."""
+    parts = re.split(r'(<h3 id="[^"]+">.*?</h3>)', body)
+    result = [parts[0]]
+    for index in range(1, len(parts), 2):
+        heading = re.fullmatch(r'<h3 id="([^"]+)">(.*?)</h3>', parts[index])
+        result.append(f'<details class="lesson-detail" id="{heading[1]}"><summary>{heading[2]}</summary>'
+                      f'<div class="reference-body">{parts[index+1]}</div></details>')
+    return "\n".join(result)
+
+
+def inline_svg(filename, alt, caption):
+    # Drop XML/DOCTYPE wrappers; all plots stay vector and self-contained offline.
+    svg = (ROOT / "docs/figures" / filename).read_text(encoding="utf-8")
+    svg = svg[svg.index("<svg"):]
+    if not re.search(r'<svg\b[^>]*\brole=', svg):
+        svg = svg.replace("<svg ", '<svg role="img" ', 1)
+    if not re.search(r'<title\b', svg):
+        svg = re.sub(r'(<svg\b[^>]*>)', lambda m: m[1] + '<title>' + escape(alt) + '</title>', svg, count=1)
+    # Matplotlib uses document-global IDs; namespace each embedded figure.
+    namespace = filename.replace(".svg", "") + "-"
+    for identifier in set(re.findall(r'\bid="([^"]+)"', svg)):
+        svg = svg.replace(f'id="{identifier}"', f'id="{namespace}{identifier}"')
+        svg = svg.replace(f'="#{identifier}"', f'="#{namespace}{identifier}"')
+        svg = svg.replace(f'url(#{identifier})', f'url(#{namespace}{identifier})')
+    return '<figure class="teaching-figure">' + svg + '<figcaption>' + escape(caption) + '</figcaption></figure>'
+
+
 def main():
     template = (ROOT / "tools/learning_guide.template.html").read_text(encoding="utf-8")
+    enhancement = (ROOT / "tools/enhancement_lesson.html").read_text(encoding="utf-8")
+    plots = [
+        ("DERIVATIVES", "enhancement-derivatives.svg", "同一横坐标下的灰度、一阶和二阶导数曲线", "归一化教学剖面：暗线中心一阶为零、二阶为正；不是实际病例强度。"),
+        ("EIGENVECTORS", "enhancement-eigenvectors.svg", "黑色弯管上的局部切线和法线特征向量", "二维理想局部示意：蓝绿色为切线 v₁，橙色为法线 v₂。箭头表示无正负定向的轴，不代表血流方向。"),
+        ("SCALES", "enhancement-scales.svg", "细线和粗线的尺度归一化二阶响应随 sigma 的变化", "二维理想 Gaussian 亮线中心的 σ² 归一化横向二阶导幅值，各曲线按自身最大值归一化；不是项目三维 Frangi 实测分数，也不是直径标定。"),
+    ]
+    for marker, filename, alt, caption in plots:
+        enhancement = enhancement.replace(f"<!-- ENHANCEMENT_{marker} -->", inline_svg(filename, alt, caption))
+    template = template.replace("<!-- ENHANCEMENT_LEARNING_CONTENT -->", enhancement)
+    template = template.replace("<!-- PIPELINE_LEARNING_CONTENT -->", (ROOT / "tools/pipeline_lessons.html").read_text(encoding="utf-8"))
     reference = []
     for name, anchor, title, description in DOCS:
         body = markdown((ROOT / "docs" / name).read_text(encoding="utf-8"), anchor)
-        reference.append(f'<details class="reference" id="{anchor}"><summary><span>{title}</span><small>{description}</small></summary><div class="reference-body">{body}</div></details>')
+        entry = f'<details class="reference" id="{anchor}"><summary><span>{title}</span><small>{description}</small></summary><div class="reference-body">{body}</div></details>'
+        if name == "gui.md":
+            template = template.replace("<!-- QT_REFERENCE_CONTENT -->", entry)
+        else:
+            reference.append(entry)
     template = template.replace("<!-- REFERENCE_CONTENT -->", "\n".join(reference))
     lesson_source = (ROOT / "docs/qt_development.md").read_text(encoding="utf-8")
-    lesson = markdown(lesson_source, "qt")
+    lesson = fold_sections(markdown(lesson_source, "qt"))
     lesson_headings = re.findall(r'^## (.+)$', lesson_source, re.MULTILINE)
-    toc = '<details class="aside-detail" open><summary>本章路线 · 点击跳到具体问题</summary><div class="grid">'
+    toc = '<details class="aside-detail"><summary>查看 Qt 章节目录 · 点击条目自动展开</summary><div class="grid">'
     toc += ''.join(f'<a href="#qt-h{i}">' + escape(title) + '</a>' for i, title in enumerate(lesson_headings, 1))
     toc += '</div></details>'
     template = template.replace("<!-- QT_LEARNING_CONTENT -->", toc + lesson)
+    code_source = (ROOT / "docs/code_walkthrough.md").read_text(encoding="utf-8")
+    def excerpt(match):
+        path, start, end = match.group(1).split("|")
+        source = (ROOT / path).read_text(encoding="utf-8")
+        begin = source.index(start)
+        finish = source.index(end, begin)
+        line = source[:begin].count("\n") + 1
+        return f"来源：[{path}，第 {line} 行](../{path})，连续源码节选。\n\n```cpp\n{source[begin:finish].rstrip()}\n```"
+    code_source = re.sub(r"<!-- SOURCE: (.+?) -->", excerpt, code_source)
+    def code_blocks(source, prefix):
+        parts = re.split(r'(<h3 id="[^"]+">.*?</h3>)', markdown(source, prefix))
+        return {index//2+1: fold_sections(re.sub(r'(<h3 id="[^"]+">)(?:\d+\.\s*)?', r'\1核心代码 · ', parts[index])+parts[index+1]) for index in range(1,len(parts),2)}
+    blocks = code_blocks(code_source, "code")
+    for marker, indices in [("VOLUME", [1,2]), ("ENHANCE", [3,4]), ("SEGMENT", [5]), ("EVALUATE", [6])]:
+        template = template.replace(f"<!-- CODE_{marker} -->", "".join(blocks[i] for i in indices))
+    pipeline_source = (ROOT / "docs/pipeline_code.md").read_text(encoding="utf-8")
+    pipeline_source = re.sub(r"<!-- SOURCE: (.+?) -->", excerpt, pipeline_source)
+    blocks = code_blocks(pipeline_source, "pipeline-code")
+    template = template.replace("<!-- CODE_SKELETON -->", blocks[1]+blocks[2])
+    template = template.replace("<!-- CODE_GEOMETRY -->", blocks[3])
     qt_figure = ROOT / "build/gui-real-preview.png"
     if qt_figure.exists():
         qt_src = "data:image/png;base64," + base64.b64encode(qt_figure.read_bytes()).decode("ascii")
         qt_content = '<figure><img src="' + qt_src + '" alt="Qt 工作台实际窗口：左侧参数、中间血管投影、右侧结果摘要与底部日志" loading="lazy"><figcaption>当前 Qt 6 工作台，打开 ImageCAS 病例 1 的参考辅助局部开发结果。中间是二维投影，不是三维渲染；左侧参数用于提交新任务，不会因打开结果而自动恢复为该实验参数。</figcaption></figure>'
     else:
         qt_content = '<p class="note">未嵌入窗口截图。下面的结构图、示例与讲解仍可完整阅读。</p>'
+    three_d_figure = ROOT / "build/gui-3d-real-preview.png"
+    if three_d_figure.exists():
+        three_d_src = "data:image/png;base64," + base64.b64encode(three_d_figure.read_bytes()).decode("ascii")
+        qt_content += '<figure><img src="' + three_d_src + '" alt="VTK 三维血管表面、青绿色中心线、橙色选中分支与 RAS 方向角标" loading="lazy"><figcaption>真实 Windows OpenGL 渲染的 ImageCAS 局部开发结果。半透明网格来自 Mask，橙色为选中分支；三维展示不会改变分割、测量或评价结果。</figcaption></figure>'
+    result_slice_figure = ROOT / "build/gui-result-slices-real.png"
+    if result_slice_figure.exists():
+        result_slice_src = "data:image/png;base64," + base64.b64encode(result_slice_figure.read_bytes()).decode("ascii")
+        qt_content += '<figure><img src="' + result_slice_src + '" alt="三维分支对应的三方向结果切片，黄色十字定位、橙色 Mask 叠加" loading="lazy"><figcaption>结果定位页：按运行记录读取底图和 ROI，三维世界坐标转换为结果网格索引，黄色十字标出目标；此页不会改动左侧分析配置。</figcaption></figure>'
+    qt_content = re.sub(r'<figure>.*?</figure>', lambda m: '<details class="aside-detail"><summary>查看截图 · ' + re.search(r'alt="([^"]+)"', m[0])[1] + '</summary><div>' + m[0] + '</div></details>', qt_content, flags=re.DOTALL)
     template = template.replace("<!-- QT_FIGURE -->", qt_content)
     figure = ROOT / "build/imagecas-x-case1/result/comparison.png"
     if figure.exists():

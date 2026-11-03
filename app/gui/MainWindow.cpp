@@ -1,4 +1,8 @@
 #include "MainWindow.hpp"
+#include "SliceViewer.hpp"
+#ifdef MEDVESSEL_GUI_VTK
+#include "ThreeDViewer.hpp"
+#endif
 #include <QtWidgets>
 #include <QSvgRenderer>
 #include <QGraphicsSvgItem>
@@ -92,16 +96,46 @@ MainWindow::MainWindow(QWidget* parent):QMainWindow(parent),job_(this) {
     connectivity_=new QComboBox;connectivity_->addItems({"26","6"});advancedForm->addRow("生长邻接",connectivity_);
     auto* reset=new QPushButton("恢复默认参数");left->addWidget(reset);left->addStretch();
     auto* center=new QWidget;auto* centerLayout=new QVBoxLayout(center);centerLayout->setContentsMargins(10,0,10,0);split->addWidget(center);
+    auto* imageTabs=new QTabWidget;centerLayout->addWidget(imageTabs,1);
+    auto* projection=new QWidget;auto* projectionLayout=new QVBoxLayout(projection);imageTabs->addTab(projection,"结果投影");
+    auto* slices=new SliceViewer;slices->setObjectName("inputSlices");imageTabs->addTab(slices,"三方向切片");
+#ifdef MEDVESSEL_GUI_VTK
+    threeD_=new ThreeDViewer;imageTabs->addTab(threeD_,"三维血管");
+    resultSlices_=new SliceViewer;resultSlices_->setObjectName("resultSlices");resultSlices_->setReadOnly();imageTabs->addTab(resultSlices_,"结果定位");
+    connect(threeD_,&ThreeDViewer::branchLocationChanged,this,[this](double x,double y,double z){resultSlices_->focusWorld({x,y,z});});
+    connect(threeD_,&ThreeDViewer::locationCleared,resultSlices_,&SliceViewer::clearFocus);
+    connect(threeD_,&ThreeDViewer::locateSlicesRequested,this,[this,imageTabs]{if(result_.isEmpty())return;imageTabs->setCurrentWidget(resultSlices_);if(resultSlices_->property("requestedResult").toString()!=result_){resultSlices_->setProperty("requestedResult",result_);resultSlices_->loadResult(result_);}});
+    connect(resultSlices_,&SliceViewer::loaded,this,[this](bool success){if(!success)resultSlices_->setProperty("requestedResult",QString());});
+#endif
+    auto* browseSlices=new QPushButton("浏览输入切片");browseSlices->setObjectName("browseSlices");inputForm->addRow(browseSlices);
+    connect(browseSlices,&QPushButton::clicked,this,[this,slices,imageTabs]{auto path=edits_["input"]->text().trimmed();if(path.isEmpty()){notify("请先选择输入影像");return;}imageTabs->setCurrentWidget(slices);slices->load(path);});
+    connect(edits_["input"],&QLineEdit::textChanged,this,[slices]{slices->setEnabled(false);});
+    connect(browseSlices,&QPushButton::clicked,slices,[slices]{slices->setEnabled(true);});
+    auto syncSelection=[this,slices]{
+        slices->setPickingEnabled(!job_.running()&&checks_["sourceSeeds"]->isChecked());
+        slices->setSelection(edits_["roi"]->text(),checks_["sourceSeeds"]->isChecked()?edits_["seeds"]->text():QString());
+    };
+    connect(edits_["roi"],&QLineEdit::textChanged,this,syncSelection);connect(edits_["seeds"],&QLineEdit::textChanged,this,syncSelection);
+    connect(checks_["sourceSeeds"],&QCheckBox::toggled,this,syncSelection);connect(&job_,&AnalysisJob::runningChanged,this,syncSelection);
+    auto canPick=[this,slices]{return !job_.running()&&checks_["sourceSeeds"]->isChecked()&&QFileInfo(slices->property("volumePath").toString()).absoluteFilePath()==QFileInfo(edits_["input"]->text().trimmed()).absoluteFilePath();};
+    connect(slices,&SliceViewer::seedPicked,this,[this,canPick](const QString& point){if(!canPick())return;auto points=edits_["seeds"]->text().split(';',Qt::SkipEmptyParts);for(auto& p:points)p=p.trimmed();if(!points.contains(point))points.append(point);edits_["seeds"]->setText(points.join(';'));});
+    connect(slices,&SliceViewer::roiPicked,this,[this,canPick](const QString& box){if(canPick())edits_["roi"]->setText(box);});
+    connect(slices,&SliceViewer::clearSeedsRequested,this,[this]{if(!job_.running())edits_["seeds"]->clear();});connect(slices,&SliceViewer::clearRoiRequested,this,[this]{if(!job_.running())edits_["roi"]->clear();});
+    checks_["sourceSeeds"]->setToolTip("鼠标选取使用原图索引；取消勾选时禁用点选与框选。切换此选项不会自动转换已填写种子。");
     auto* centerHeader=new QHBoxLayout;centerHeader->addWidget(text("结果投影"));centerHeader->addStretch();
-    auto* fit=new QPushButton("适应窗口");auto* zoomIn=new QPushButton("＋");auto* zoomOut=new QPushButton("－");centerHeader->addWidget(fit);centerHeader->addWidget(zoomOut);centerHeader->addWidget(zoomIn);centerLayout->addLayout(centerHeader);
-    scene_=new QGraphicsScene(this);view_=new QGraphicsView(scene_);view_->setObjectName("preview");view_->setBackgroundBrush(QColor("#101b2c"));view_->setRenderHint(QPainter::Antialiasing);view_->setDragMode(QGraphicsView::ScrollHandDrag);centerLayout->addWidget(view_,1);
+    auto* fit=new QPushButton("适应窗口");auto* zoomIn=new QPushButton("＋");auto* zoomOut=new QPushButton("－");centerHeader->addWidget(fit);centerHeader->addWidget(zoomOut);centerHeader->addWidget(zoomIn);projectionLayout->addLayout(centerHeader);
+    scene_=new QGraphicsScene(this);view_=new QGraphicsView(scene_);view_->setObjectName("preview");view_->setBackgroundBrush(QColor("#101b2c"));view_->setRenderHint(QPainter::Antialiasing);view_->setDragMode(QGraphicsView::ScrollHandDrag);projectionLayout->addWidget(view_,1);
     previewHint_=text("打开已有结果，或载入示例后开始分析。完成后展示原图、增强、分割和中心线投影。");previewHint_->setObjectName("muted");centerLayout->addWidget(previewHint_);
-    auto* warning=text("投影会叠加不同深度的结构，不能单凭投影判断三维连通性。当前版本提供投影预览；三方向切片与 3D 显示尚未接入。");warning->setObjectName("muted");centerLayout->addWidget(warning);
+    auto* warning=text("选择输入后点击“浏览输入切片”，可调整窗宽窗位，并载入同网格的二值 Mask 检查边界。投影会叠加不同深度的结构。");warning->setObjectName("muted");centerLayout->addWidget(warning);
     auto* right=new QTabWidget;right->setMinimumWidth(300);split->addWidget(right);split->setSizes({330,710,400});split->setStretchFactor(1,1);
     auto* info=new QWidget;auto* infoLayout=new QVBoxLayout(info);summary_=text("还没有分析结果\n\n可先载入合成示例，体验完整流程。");summary_->setObjectName("summary");summary_->setTextInteractionFlags(Qt::TextSelectableByMouse);infoLayout->addWidget(summary_);
     resultPath_=text("");resultPath_->setTextInteractionFlags(Qt::TextSelectableByMouse);infoLayout->addWidget(resultPath_);infoLayout->addStretch();
     folder_=new QPushButton("打开结果文件夹");folder_->setEnabled(false);export_=new QPushButton("导出分支 CSV…");export_->setEnabled(false);infoLayout->addWidget(folder_);infoLayout->addWidget(export_);right->addTab(info,"实验摘要");
     table_=new QTableView;table_->setObjectName("branches");model_=new QStandardItemModel(this);table_->setModel(model_);table_->setAlternatingRowColors(true);table_->setSortingEnabled(true);table_->setSelectionBehavior(QAbstractItemView::SelectRows);table_->setEditTriggers(QAbstractItemView::NoEditTriggers);right->addTab(table_,"分支表");
+#ifdef MEDVESSEL_GUI_VTK
+    connect(table_->selectionModel(),&QItemSelectionModel::currentRowChanged,this,[this](const QModelIndex& current){threeD_->selectBranch(current.isValid()?model_->index(current.row(),0).data().toInt():-1);});
+    connect(threeD_,&ThreeDViewer::branchPicked,this,[this,right](int id){for(int row=0;row<model_->rowCount();++row)if(model_->index(row,0).data().toInt()==id){table_->selectRow(row);table_->scrollTo(model_->index(row,0));right->setCurrentWidget(table_);break;}});
+#endif
     auto* logGroup=new QGroupBox("运行日志");auto* logLayout=new QVBoxLayout(logGroup);logs_=new QPlainTextEdit;logs_->setReadOnly(true);logs_->setMaximumBlockCount(1500);logs_->setMaximumHeight(115);logLayout->addWidget(logs_);root->addWidget(logGroup);
     auto* status=new QHBoxLayout;stage_=text("就绪");stage_->setObjectName("stage");elapsed_=text("");status->addWidget(stage_);status->addStretch();status->addWidget(elapsed_);root->addLayout(status);progress_=new QProgressBar;progress_->setRange(0,1);progress_->setValue(0);progress_->setTextVisible(false);root->addWidget(progress_);
     JobConfig defaults;defaults.executable=cliPath();
@@ -145,6 +179,10 @@ bool MainWindow::startAnalysis(QString* error) {
     c.input=QFileInfo(c.input).absoluteFilePath();c.executable=QFileInfo(c.executable).absoluteFilePath();c.outputRoot=QDir(c.outputRoot).absolutePath();
     // Validate before clearing the last successfully opened result.
     if(!job_.start(c,error))return false;
+#ifdef MEDVESSEL_GUI_VTK
+    threeD_->setResult({});
+    resultSlices_->clear();resultSlices_->setProperty("requestedResult",QString());
+#endif
     result_.clear();model_->clear();summary_->setText("正在分析…\n\n结果保存到：\n"+job_.outputDirectory());resultPath_->clear();folder_->setEnabled(false);export_->setEnabled(false);scene_->clear();delete renderer_;renderer_=nullptr;logs_->clear();appendLog("新任务："+job_.outputDirectory());previewHint_->setText("算法正在后台运行，完成后自动载入结果。");return true;
 }
 bool MainWindow::openResult(const QString& directory,QString* error) {
@@ -172,6 +210,10 @@ bool MainWindow::openResult(const QString& directory,QString* error) {
         table_->setSortingEnabled(false);model_->clear();model_->setHorizontalHeaderLabels({"分支 ID","起点","终点","长度 mm","平均 EDT 直径 mm"});
         for(const auto& cells:rows){QList<QStandardItem*> items;for(const auto& cell:cells){auto* itemCell=new QStandardItem;bool ok=false;double v=cell.toDouble(&ok);if(ok)itemCell->setData(v,Qt::DisplayRole);else itemCell->setText(cell.isEmpty()?"—":cell);items<<itemCell;}model_->appendRow(items);}
         table_->setSortingEnabled(true);table_->sortByColumn(0,Qt::AscendingOrder);table_->resizeColumnsToContents();
+#ifdef MEDVESSEL_GUI_VTK
+        threeD_->setResult(dir.absolutePath());
+        resultSlices_->clear();resultSlices_->setProperty("requestedResult",QString());
+#endif
         result_=dir.absolutePath();summary_->setText(details);resultPath_->setText("结果目录：\n"+result_);folder_->setEnabled(true);export_->setEnabled(true);previewHint_->setText("左至右：原图强度、Frangi 响应、分割 Mask、中心线分支。拖动平移，使用 ＋ / － 缩放。");stage_->setText("已载入结果");appendLog("已打开："+result_);return true;
     }catch(const std::exception& e){if(error)*error=QString::fromUtf8(e.what());return false;}
 }

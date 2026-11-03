@@ -9,6 +9,8 @@ class QComboBox;class QLabel;class QPushButton;class QPlainTextEdit;
 class QTableView;class QStandardItemModel;class QProgressBar;class QGraphicsView;
 class QGraphicsScene;class QSvgRenderer;
 namespace medvessel::desktop {
+class ThreeDViewer;
+class SliceViewer;
 class MainWindow:public QMainWindow {
     Q_OBJECT
 public:
@@ -40,6 +42,10 @@ private:
     QString result_;
     QElapsedTimer clock_;
     QTimer timer_;
+#ifdef MEDVESSEL_GUI_VTK
+    ThreeDViewer* threeD_;
+    SliceViewer* resultSlices_;
+#endif
     void fitPreview();
     void notify(const QString& message);
     void appendLog(const QString& message);

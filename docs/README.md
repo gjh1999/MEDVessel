@@ -1,8 +1,12 @@
 # MEDVessel 文档入口
 
-**推荐入口：[项目学习网页](medvessel_learning_guide.html)。** 这是整合后的单文件手册，分为独立的「总体概览」与「深入学习」两区。初学时按顺序阅读，熟悉后只需回顾总体概览；原始文档保留为维护来源。
+**推荐入口：[项目学习网页](medvessel_learning_guide.html)。** 单文件手册分为同级的「总体概览」「深入学习」「Qt 桌面开发」三页。算法页按影像、增强、分割、骨架与图、测量、实验六章阅读；代码放在对应章节，细节默认折叠。原始文档保留为维护来源。
 
 维护网页：修改源文档或 `tools/learning_guide.template.html` 后，在仓库根目录运行 `python tools/build_learning_guide.py`。生成时会自动嵌入本机已有的真实样例对照图。
+
+Gaussian → Hessian → Frangi 的折叠课程维护在 `tools/enhancement_lesson.html`。教学图为 `docs/figures` 中的 SVG，生成网页无需联网或绘图库；修改图示时运行 `python tools/plot_enhancement_guide.py`（需要 Matplotlib、NumPy），再生成网页。代码精读与 Qt 细节默认折叠，章节链接会自动展开对应条目。
+
+分割到实验的课程维护在 `tools/pipeline_lessons.html`；`docs/code_walkthrough.md` 与 `docs/pipeline_code.md` 中的源码片段在生成时分配到各章，不再集中为单独的代码章节。Qt 开发说明和桌面操作查阅放在独立 Qt 页。
 
 当前已跑通算法主流程：读取 → ROI → Gaussian 导数 / Hessian → Jacobi → Frangi → 分割 → EDT → 细化 → 分支图 → 几何报告。
 已验证合成数据和一个真实冠脉病例的参考辅助局部区域；这不等于全计划完成或全图自动分割已经验证。

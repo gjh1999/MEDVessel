@@ -12,6 +12,23 @@
 @media(min-width:1450px){.section p,.reference-body p{max-width:90ch}}@media(max-width:1050px){.shell{grid-template-columns:175px minmax(0,1fr);gap:20px;padding:0 20px}.top-inner{padding:11px 20px}.hero{padding:30px}.section{padding:23px}.concept-visual{grid-template-columns:repeat(2,1fr)}}@media(max-width:760px){.top-inner{gap:10px;flex-wrap:wrap;padding:9px 13px}.brand{font-size:17px}.tabs{order:3;width:100%}.tab{flex:1;font-size:13px}.print{font-size:11px}.shell{display:block;padding:0 12px;margin-top:17px}.sidebar{position:static;margin-bottom:18px}.sidebar [data-nav]{display:none}.side-note{display:none}.outline-mobile{display:block;font-size:13px;border:1px solid var(--line);border-radius:9px;padding:9px 12px;background:white}.outline-mobile a{display:block;padding:5px;color:var(--green)}.hero{padding:26px 22px}.hero h1{font-size:29px}.section{padding:21px 18px}.section h2{font-size:22px}.flow{grid-template-columns:repeat(2,minmax(0,1fr))}.grid{grid-template-columns:1fr}.metric-row{gap:7px}.metric{padding:13px 10px}.metric b{font-size:23px}.reference>summary{display:block;padding:15px}.reference summary small{display:block;padding-left:19px;margin-top:3px}.reference-body{padding:8px 16px 20px}.cells{grid-template-columns:repeat(6,1fr)}html{scroll-padding-top:142px}.glossary{grid-template-columns:95px 1fr}.summary-card{padding:19px}.sliders label{grid-template-columns:auto 125px 35px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}@media print{body{background:white;font-size:11pt}.top,.sidebar,.reading-progress,.copy,.ref-tools,.return,.toast,.demo input{display:none!important}.shell{display:block;margin:0;padding:0;max-width:none}.hero{background:#edf3e9!important;color:#19312e;padding:22px;break-inside:avoid}.hero p,.hero .subtle,.eyebrow{color:#354c42}.section{box-shadow:none;break-inside:auto;border-color:#aaa;padding:18px;margin-top:16px}h2,h3,summary{break-after:avoid}table{font-size:9pt}.card,.metric,.stage,figure{break-inside:avoid}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4ef!important;color:#19312e}pre code{color:inherit}a{color:inherit}.reference>summary{background:none!important}.reference summary small{font-size:9pt}.hero:after{display:none}.footer{margin-top:20px}}
 </style>
+<style>
+.lesson-detail{border:1px solid var(--line);border-radius:9px;margin:10px 0;background:#fff}
+.lesson-detail>summary{padding:12px 15px;font-size:14px;font-weight:650;color:var(--green)}
+.lesson-detail[open]>summary{border-bottom:1px solid var(--line);background:var(--soft)}
+.lesson-detail .reference-body{padding:8px 19px 20px}
+.teaching-figure{background:#fff}.teaching-figure svg{display:block;width:100%;height:auto}
+.enhancement-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;list-style-position:inside;padding:0}
+.enhancement-flow li{margin:0;background:var(--soft);padding:12px;border-radius:8px;font-size:13px}
+.pipeline-flow{list-style:none;padding:0;margin:20px 0 25px;max-width:900px}
+.pipeline-flow li{position:relative;margin:0 0 23px;padding:10px 16px;text-align:center;background:var(--soft);border:1px solid var(--line);border-radius:9px}
+.pipeline-flow li:not(:last-child)::after{content:"↓";position:absolute;left:calc(50% - 7px);bottom:-24px;color:var(--green);font-size:18px;line-height:23px}
+.pipeline-flow b,.pipeline-flow span{display:block}.pipeline-flow span{font-size:12px;color:var(--muted)}
+.pipeline-diagram{display:block;width:100%;height:auto;margin:18px 0}
+.diagram-scroll{overflow-x:auto;overscroll-behavior-inline:contain;margin:18px 0}.diagram-scroll figure{margin:0}
+@media(max-width:650px){.tabs{flex-wrap:wrap}.tab{flex:1 1 140px}.top-inner{gap:10px}html{scroll-padding-top:190px}}
+@media(max-width:650px){.enhancement-flow{grid-template-columns:1fr}.lesson-detail .reference-body{padding:8px 13px 16px}}
+</style>
 </head>
 <body>
 <a href="#overview-home" class="skip">跳到正文</a><div class="reading-progress" id="reading-progress" aria-hidden="true"></div>
@@ -20,16 +37,17 @@
 <div class="tabs" role="tablist" aria-label="选择阅读层级">
 <button class="tab" id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview" data-view="overview">总体概览 · 日常回顾</button>
 <button class="tab" id="tab-deep" role="tab" aria-selected="false" aria-controls="panel-deep" tabindex="-1" data-view="deep">深入学习 · 原理与实践</button>
+<button class="tab" id="tab-qt" role="tab" aria-selected="false" aria-controls="panel-qt" tabindex="-1" data-view="qt">Qt · 桌面开发</button>
 </div><button class="print" id="print-page">打印当前部分</button>
 </div></header>
 <div class="shell">
 <aside class="sidebar" aria-label="本页目录">
 <div data-nav="overview"><strong>总体概览 / 约 5–8 分钟</strong>
 <a href="#overview-home">项目是什么</a><a href="#overview-flow">从输入到结果</a><a href="#overview-concepts">三个关键区别</a><a href="#overview-evidence">目前做到了什么</a><a href="#overview-code">实现与使用入口</a><a href="#overview-recap">一页回顾卡片</a></div>
-<div data-nav="deep" hidden><strong>深入学习 / 按需阅读</strong>
-<a href="#learn-start">怎么学这份文档</a><a href="#learn-volume">01 · 影像与物理坐标</a><a href="#learn-frangi">02 · 为什么能增强血管</a><a href="#learn-segment">03 · 怎样得到分割</a><a href="#learn-centerline">04 · 中心线与测量</a><a href="#learn-code">05 · 对着代码理解</a><a href="#learn-evaluate">06 · 怎样看懂实验</a><a href="#learn-qt">07 · Qt 工作台怎么写</a><a href="#reference-desk">完整查阅区</a><a href="#roadmap">阶段与参考项目</a></div>
+<div data-nav="deep" hidden><strong>深入学习 / 六章主线</strong><a href="#learn-start">怎么学这份文档</a><a href="#learn-volume">01 · 影像与物理坐标</a><a href="#learn-frangi">02 · 血管增强</a><a href="#learn-segment">03 · 血管分割</a><a href="#learn-centerline">04 · 骨架与图结构</a><a href="#learn-geometry">05 · 几何测量</a><a href="#learn-evaluate">06 · 实验与评价</a><a href="#reference-desk">完整查阅区</a><a href="#roadmap">阶段与参考项目</a></div>
+<div data-nav="qt" hidden><strong>Qt / 使用与实现</strong><a href="#qt-home">独立页面概览</a><a href="#learn-qt">总体关系与截图</a><a href="#qt-h1">窗口、参数与进程</a><a href="#qt-h5">跟随一次开始分析</a><a href="#qt-h17">三方向切片</a><a href="#qt-h18">窗宽窗位与叠加</a><a href="#qt-h19">鼠标选取</a><a href="#qt-h20">VTK 三维显示</a><a href="#qt-h21">三维到结果切片</a><a href="#qt-reference">操作与构建查阅</a></div>
 <details class="outline-mobile"><summary>展开本页目录</summary><div id="mobile-links"></div></details>
-<p class="side-note">第一次阅读：先看概览，再按章节学习。<br><br>熟悉以后：只保留在“总体概览”即可，不必展开参数表和技术附录。<br><br>状态记录：2026-11-02<br>内容与图片均已内嵌，可离线阅读。</p>
+<p class="side-note">第一次阅读：先看概览，再按章节学习。<br><br>熟悉以后：只保留在“总体概览”即可，不必展开参数表和技术附录。<br><br>状态记录：2026-11-03<br>细节默认折叠，内容与图片均已内嵌，可离线阅读。</p>
 </aside>
 <main id="main-content">
 <div class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
@@ -79,8 +97,8 @@
 </section>
 
 <section class="section" id="overview-evidence" data-watch>
-<div class="kicker">当前状态 / 2026-11-02</div><h2>主流程能运行，验证程度还要单独看。</h2>
-<div class="grid"><div class="card"><h3>已经具备</h3><p>算法闭环、NIfTI 与受限 DICOM CT 读入、合成和真实样例运行、几何报告、参数记录、SVG/PNG 对照、OpenMP 卷积并行化，以及 Qt 6 桌面工作台（参数、运行/停止、投影与分支表）。</p></div><div class="card"><h3>还在验证或尚未实现</h3><p>独立多病例表现、全图自动冠脉定位、复杂骨架稳定性、真实厂商 DICOM 兼容、大体积内存基准，以及交互切片与 VTK 三维显示。</p></div></div>
+<div class="kicker">当前状态 / 2026-11-03</div><h2>主流程能运行，验证程度还要单独看。</h2>
+<div class="grid"><div class="card"><h3>已经具备</h3><p>算法闭环、NIfTI 与受限 DICOM CT 读入、合成和真实样例运行、几何报告、参数记录、SVG/PNG 对照、OpenMP 卷积并行化，以及 Qt 6 工作台（三方向切片、窗宽窗位、Mask 叠加、点选种子、框选 ROI、VTK 三维/分支表双向联动、三维到结果切片定位）。</p></div><div class="card"><h3>还在验证或尚未实现</h3><p>独立多病例表现、全图自动冠脉定位、复杂骨架稳定性、真实厂商 DICOM 兼容、大体积内存基准、标准解剖平面重采样，以及切片选点反向定位三维。</p></div></div>
 <div class="metric-row"><div class="metric"><b>27</b><span>启用 Qt 的完整构建通过的 CTest 项</span></div><div class="metric"><b>0.957</b><span>合成直圆柱的分割 Dice</span></div><div class="metric"><b>0.816</b><span>单例真实冠脉局部区域 Dice</span></div></div>
 <p><strong>这些数字代表不同层次的证据。</strong>测试通过说明指定案例的代码行为符合预期；合成数据有已知真值；真实样例反映了真实影像中的可行性，但目前只是病例 1 的局部开发区域。</p>
 <div class="callout warn"><strong>真实样例的 ROI 和种子由参考标注辅助选取。</strong>这不是独立测试，也不是完整 CTA 上的全自动成绩。仍可看到细支漏分、冠脉开口附近过分割，以及多余骨架分支。当前定位是研究型 CLI Demo，不用于患者诊断或治疗决策。</div>
@@ -96,7 +114,7 @@
 <tr><td>实验辅助</td><td>Python / PowerShell</td><td>负责获取、校验、格式转换、复现和绘图，不进入 C++ 核心算法路径。</td></tr>
 </tbody></table></div>
 <p>主处理入口是 <code>app/pipeline.cpp</code> 对应的 <code>medvessel_cli</code>。评价是独立程序；普通主处理命令不会读取参考标注。只有开发辅助流程会用参考来准备 ROI 和种子。</p>
-<h3>桌面打开使用</h3><p>本机双击 <code>build/desktop/medvessel_gui.exe</code>，点击“载入合成示例 → 开始分析”。开发构建可运行 <code>./tools/start_gui.ps1</code>。通过“打开结果”选择 <code>build/imagecas-x-case1/result</code>，即可查看现有真实开发样例。当前桌面版提供投影预览，尚无三方向切片或三维交互。<a href="#ref-gui">桌面操作与构建详情 →</a></p>
+<h3>桌面打开使用</h3><p>本机双击 <code>build/desktop/medvessel_gui.exe</code>，点击“载入合成示例 → 开始分析”。开发构建可运行 <code>./tools/start_gui.ps1</code>。通过“打开结果”选择 <code>build/imagecas-x-case1/result</code>，即可查看现有真实开发样例。选择输入后点击“浏览输入切片”，可逐层浏览、调节窗宽窗位、叠加 Mask 并选取种子和 ROI。启用 VTK 时，打开结果后切换“三维血管”，点击“载入三维结果”，可旋转查看表面与中心线，并与分支表双向联动。<a href="#ref-gui">桌面操作与构建详情 →</a></p>
 <p><strong>Qt 实现只需先记住：</strong>MainWindow 管交互，JobConfig 管参数，AnalysisJob 管进程；算法仍由独立 CLI 执行。界面通过信号接收阶段和结果，不在按钮回调中执行耗时计算。<a href="#learn-qt">沿一次“开始分析”学习实现 →</a></p>
 <h3>本机日常复现</h3><p class="note">前提：已完成本机 C++ 构建。首次准备环境时，进入下方的构建查阅区。该命令复现的仍是参考辅助的单例开发样例。</p>
 <pre data-language="powershell"><code>&amp; ./tools/run_imagecas_sample.ps1 -PlotPython C:/Users/1/anaconda3/python.exe</code></pre>
@@ -123,7 +141,7 @@
 <div class="panel" id="panel-deep" role="tabpanel" aria-labelledby="tab-deep" data-panel="deep" hidden>
 <section class="hero" id="learn-start" data-watch>
 <div class="eyebrow">PART II / UNDERSTAND THE DETAILS</div><h1>先理解每一步，<br>再去记公式和接口。</h1>
-<p>这部分按第一次接触项目的顺序组织：先学数据是什么，再学算法为什么这样做，随后对照代码和实验。完整命令、参数、字段和校验值放在最后的可展开查阅区。</p>
+<p>六章沿数据流展开：影像 → 增强 → 分割 → 骨架与图 → 测量 → 实验。每章先看目的与流程，再按需展开公式和本章代码。Qt 使用与开发移到顶部独立页面。</p>
 <p class="subtle">建议路线：01 → 02 → 03 → 04 → 05 → 06。第一次先读正文，带“进一步理解”的内容可以以后再看。</p>
 <a class="hero-link" href="#overview-recap">已经熟悉了？回到总体回顾卡片 ↗</a>
 </section>
@@ -147,126 +165,13 @@
 <p>ImageCAS 原始标签曾缺少单位声明。实际处理先核对它与配对 CTA 的尺寸和数值几何，再显式借用 CTA 的 mm 声明，另存派生文件；原标签不改动。ImageCAS-X v2 的同例标注已有有效单位。</p>
 </div></details>
 <div class="callout"><strong>这一章记住：</strong>数组决定存储，几何决定物理意义。后面所有“长度、直径、角度”的可信度都建立在这里。</div>
+<span id="learn-code"></span>
+<!-- CODE_VOLUME -->
 </section>
 
-<section class="section" id="learn-frangi" data-watch>
-<div class="kicker">02 / 血管增强</div><h2>不只看亮不亮，还看周围怎样变化。</h2>
-<p class="chapter-question">读完这一章，你应该能回答：Hessian 和特征值在帮我们观察什么？为什么需要多个尺度？</p>
-<p>想象站在一根亮血管的中心：沿着血管往前走，灰度变化通常较小；朝两个横向走，很快离开亮管腔，灰度下降。<strong>“一个方向变化小，两个方向变化大”</strong>，就是识别细长管状结构的线索。</p>
-<h3>先在合适的尺寸下观察：Gaussian 与尺度</h3>
-<p>Gaussian 可以理解为有距离权重的局部平均。sigma 决定观察范围：小 sigma 更关注细结构，大 sigma 更关注粗结构。直接对噪声求导不稳定，所以本项目用 Gaussian 的导数核来计算局部变化。</p>
-<p>sigma 用 mm 表示。例如 sigma=1 mm，x spacing=0.5 mm 时，相当于 x 轴约 2 个体素；z spacing=2 mm 时，相当于 z 轴约 0.5 个体素。这也是 spacing 必须参与滤波的原因。</p>
-<h3>把各个方向的二阶变化放在一起：Hessian</h3>
-<div class="formula">H = [ Ixx  Ixy  Ixz
-      Ixy  Iyy  Iyz
-      Ixz  Iyz  Izz ]</div>
-<p>二阶导数描述局部变化的弯曲程度。Hessian 是一个对称 3×3 矩阵，只有六个独立分量。它本身还不直观，特征值分解能找到局部的主要方向，以及这些方向上的变化强度。</p>
-<h3>用特征值判断局部形状</h3>
-<p>先按绝对值排列 <code>|λ₁| ≤ |λ₂| ≤ |λ₃|</code>。对亮管中心，一个理想模式是 λ₁ 接近 0，λ₂、λ₃ 为负且幅值较大。相应的 λ₁ 特征向量近似沿管方向。</p>
-<div class="table-scroll"><table><thead><tr><th>局部形状</th><th>直观模式</th><th>希望得到的响应</th></tr></thead><tbody><tr><td>平坦背景</td><td>三个方向的二阶变化都小</td><td>低</td></tr><tr><td>片状结构</td><td>主要只有一个方向变化显著</td><td>抑制</td></tr><tr><td>团块状结构</td><td>三个方向都显著变化</td><td>抑制</td></tr><tr><td>管状结构</td><td>一个方向较平缓，另外两个方向相似且显著</td><td>增强</td></tr></tbody></table></div>
-<p>这些是局部理想模式，分叉、曲折、噪声和部分容积效应都会使它偏离；因此增强不能单独完成分割。</p>
-<h3>把形状线索变成数值：Frangi</h3>
-<p>Frangi 将“管与片的区别”“管与团块的区别”“结构是否足够明显”组合成一个响应。α、β、c 控制这些因素的敏感程度；其中 c 与输入灰度尺度有关，不能跨数据无条件复用。</p>
-<details class="aside-detail"><summary>进一步理解：公式、符号与实现细节</summary><div>
-<div class="formula">RA = |λ₂| / |λ₃|
-RB = |λ₁| / √(|λ₂λ₃|)
-S  = √(λ₁² + λ₂² + λ₃²)
+<!-- ENHANCEMENT_LEARNING_CONTENT -->
 
-V = (1 − exp(−RA² / 2α²))
-    × exp(−RB² / 2β²)
-    × (1 − exp(−S² / 2c²))</div>
-<p>亮管模式要求 λ₂、λ₃ 为负，否则响应为 0；暗管符号相反。分母退化时也返回 0。响应是形状分数，不是经校准的概率。</p>
-<p>Jacobi 算法反复旋转以消去最大非对角项，从矩阵得到特征值和配对向量；排序时两者必须一起调整。本实现先缩放矩阵以改善数值行为。</p>
-<p>Gaussian 核截断于 3 sigma，采用可分离相关与复制边界。导数核校正离散矩，使内部线性/二次多项式的导数吻合；Hessian 默认乘 sigma² 做尺度归一化。sigma 远小于 spacing 时不能把它当作高精度连续近似。</p>
-</div></details>
-<h3>为什么要多尺度？</h3>
-<p>同一棵血管树有粗有细。程序对每个 sigma 分别计算响应，再逐体素保留最大值和对应的 <code>BestScale</code>。无响应位置的尺度为 0；响应相同时保留先遍历的尺度。</p>
-<div class="callout"><strong>这一章记住：</strong>Gaussian 设定观察尺寸，Hessian 描述二阶形状，特征值揭示主要方向，Frangi 组合成管状响应。<strong>最佳 sigma 不是直接测得的半径或直径。</strong></div>
-</section>
-
-<section class="section" id="learn-segment" data-watch>
-<div class="kicker">03 / 血管分割</div><h2>高响应是线索，连通区域才是分割结果。</h2>
-<p class="chapter-question">读完这一章，你应该能回答：弱响应为什么有时保留、有时丢掉？种子和 NMS 分别做什么？</p>
-<p>直接设一个阈值很容易两头为难：阈值高，细血管会断；阈值低，噪声和其他组织又会进入。双阈值的思路是：<strong>用强响应点开始，只沿满足条件的邻接弱响应点扩展。</strong></p>
-<h3>先看一个一维教学例子</h3><p class="note">下面只有左右邻接，用来解释传播规则；实际程序是在三维 6/26 邻域上工作，不是对影像逐行这样处理。</p>
-<div class="demo" id="threshold-demo"><div class="sliders"><label for="demo-low">low <input id="demo-low" type="range" min="0" max="1" step="0.01" value="0.10"><output id="demo-low-value" for="demo-low">0.10</output></label><label for="demo-high">high <input id="demo-high" type="range" min="0" max="1" step="0.01" value="0.30"><output id="demo-high-value" for="demo-high">0.30</output></label></div><div class="cells" id="demo-cells" aria-label="十二个连续位置的响应值"></div><div class="legend"><i style="background:#176e59"></i>强种子 <i style="background:#b9dcc9"></i>被连通传播保留 <i style="background:#e5ecd9"></i>达到 low 但未连接 <i style="background:white;border:1px solid #c7d4c1"></i>未达到 low</div><p class="demo-status" id="demo-status" aria-live="polite"></p></div>
-<p>在默认阈值下，0.48 和 0.66 可以作种子；与它们连接的较弱点可以被保留。但隔着低于 low 的位置，孤立的 0.18 即使达到 low，也不会自动成为前景。</p>
-<h3>实际程序还有哪些约束？</h3><ul><li><strong>手工种子：</strong>指定目标位置，可以多次传入。种子要在处理网格内，并满足 low 与原图灰度条件；high 不限制手工种子的初始化。</li><li><strong>灰度门控：</strong>同一个位置不仅要“像管”，原图值还要处于指定范围。只有确认源图确为 HU 时，才能把范围按 HU 理解。</li><li><strong>邻接关系：</strong>6 邻域只通过面连接；26 邻域也允许棱与角连接。斜向细支可能受此影响。</li><li><strong>连通域过滤：</strong>分割后可以按体素数丢弃小区域，但小区域也可能是真实细支。</li></ul>
-<h3>NMS 与分割是什么关系？</h3><p>NMS（非极大值抑制）在局部管方向的垂直平面比较响应，只保留横向的局部极大点。这里它是<strong>自动选种子的方法</strong>，实际生长仍使用完整响应图；若直接把 NMS 结果当管腔，就会把血管压成过细的结构。</p>
-<details class="aside-detail"><summary>进一步理解：CLI 的三种模式和空结果</summary><div><ol><li>有手工种子时，从手工点生长；即使同时指定 NMS，也不会再生成 NMS 种子。</li><li>无手工种子、开启 NMS 时，用大于 0 且达到 high 的 NMS 点初始化；没有候选则输出空 Mask。</li><li>都没有时，使用所有达到 high 的响应点做双阈值传播。</li></ol><p>越界种子会报错，不符合候选条件的种子会被忽略。空 Mask 不一定是程序故障，也可能是参数或种子没有命中目标。反过来，连通不意味着解剖上正确，区域也可能沿错误连接泄漏。</p></div></details>
-<div class="callout"><strong>这一章记住：</strong>分割是在原图、响应、起点与连通规则的共同约束下决定前景。调参时要看漏分、断裂和泄漏，不能只看图是否“更亮”。</div>
-</section>
-
-<section class="section" id="learn-centerline" data-watch>
-<div class="kicker">04 / 中心路径</div><h2>从一根“实心管”，到可以追踪的分支图。</h2>
-<p class="chapter-question">读完这一章，你应该能回答：为什么先算距离，再做细化？为什么删边界点还要检查邻居？</p>
-<h3>EDT：每个前景点离背景多远？</h3><p>欧氏距离变换（EDT）为每个体素找到最近的背景体素中心。血管内侧通常比边缘距离大，距离场既可以指导细化顺序，也可以给出局部半径的快速近似。</p>
-<div class="formula">D(p) = min √[(Δx·sx)² + (Δy·sy)² + (Δz·sz)²]
-       q 属于体积内背景，Δ 为 p 与 q 的索引差</div>
-<p>本实现沿三个轴计算抛物线下包络，实现带 spacing 的精确离散欧氏距离。这里“精确”指对该离散距离定义精确，不等于连续解剖边界的测量没有误差。体积内没有背景时，距离为无穷。</p>
-<h3>细化：逐层去掉多余体素，但不能随便删</h3><p>如果一个点是连接两段血管的桥，删掉它会把血管切断；如果删点打开了封闭空腔，也改变了结构。程序按 EDT 优先级逐点尝试，重新判断是否为 <strong>simple point（删除后局部拓扑不变的点）</strong>，并保护端点。删除后，受影响的邻点重新进入队列。</p>
-<details class="aside-detail"><summary>进一步理解：拓扑约定与当前细化的边界</summary><div><p>使用前景 26、背景 6 邻接。simple-point 判据检查前景 N26 的 26 连通分量，以及背景 N18 中与中心 6 邻接的 6 连通分量；二者都必须为 1。</p><p>这些判断在每次删除后重新执行。不能因为多个点各自看起来可删，就直接并行批量删除它们。</p><p>这是顺序距离优先侵蚀基线，不是 Lee 方法的完整复现。复杂输入仍可能留下毛刺或片状结构；“拓扑保持”也不意味着中心位置和分支图已经解剖准确。</p></div></details>
-<h3>图结构：把长串体素压缩成节点和分支</h3><p>端点、分叉簇成为节点；中间长串路径组成边，也就是一条分支。相邻分叉体素先聚类，避免一个真实分叉被数成许多个节点。没有端点的闭环用一个合成节点和自环表达。</p>
-<div class="table-scroll"><table><thead><tr><th>骨架体素的邻居数</th><th>初步作用</th><th>仍需注意</th></tr></thead><tbody><tr><td>0 或 1</td><td>孤立点或端点</td><td>可能是真末端，也可能是噪声</td></tr><tr><td>2</td><td>可沿着追踪的路径点</td><td>追踪时要处理回路，避免死循环</td></tr><tr><td>大于 2</td><td>潜在分叉区域</td><td>26 邻接会产生密集邻接，不能直接当成真实解剖分叉</td></tr></tbody></table></div>
-<p>短枝修剪可以去掉一些毛刺，也可能误删真实小分支，所以默认关闭。图的 ID 是当前提取结果的序号，不是稳定的解剖名称；目前未指定根，也不推断父子或血流方向。</p>
-<div class="callout"><strong>这一章记住：</strong>距离场提供“离边界多远”，骨架提供“怎样走”，图提供“怎样连”。三者分别解决不同问题。</div>
-</section>
-
-<section class="section" id="learn-geometry" data-watch>
-<div class="kicker">04 / 几何测量</div><h2>能够输出数字，还要知道数字是怎么来的。</h2>
-<div class="table-scroll"><table><thead><tr><th>测量</th><th>当前做法</th><th>主要误差来源</th></tr></thead><tbody><tr><td>长度</td><td>沿中心路径累加相邻世界坐标点距离</td><td>栅格锯齿、端点位置、分叉簇内部长度未补偿</td></tr><tr><td>EDT 直径</td><td>路径点上取 2×EDT，再做统计</td><td>离散体素中心、中心线偏移、非圆截面、分割误差</td></tr><tr><td>截面与等效直径</td><td>估计切向量，在垂直平面采样 Mask；用面积换算等效圆直径</td><td>切向量、采样步长、截断及分割边界</td></tr><tr><td>分支角度</td><td>在节点附近拟合各分支的出射方向，再两两求夹角</td><td>分叉定位、拟合窗口、缺少父分支定义</td></tr><tr><td>曲率</td><td>先平滑折线，再用三点外接圆近似弯曲程度</td><td>噪声、采样密度、平滑次数和退化点</td></tr></tbody></table></div>
-<div class="formula">长度 L = Σ ||pi+1 − pi||world
-等效直径 deq = 2√(A / π)
-方向夹角 θ = arccos[(u·v) / (||u|| ||v||)]</div>
-<p>当前截面取路径的中间序号点，并非按弧长重新找到一半位置；只统计包含中心点的平面 4 连通前景，避免相邻血管混入。窗口截断或方向退化时，相关字段留空。</p>
-<div class="callout warn"><strong>用合成真值检查直觉：</strong>参考直圆柱直径为 4 mm，当前 EDT 平均直径约 3 mm，截面等效直径约 3.785 mm。两种估计并不相同，也都有误差；不能把“程序输出了直径”解释为“直径已经精确”。</div>
-<p>阅读报告时，先确认单位、计算方法、有效性和评价范围，再看数值大小。CSV 空值表示未定义或不可用，不是 0。</p><a href="#ref-output">查阅全部文件与字段 →</a>
-</section>
-
-<section class="section" id="learn-code" data-watch>
-<div class="kicker">05 / 对照代码</div><h2>第一次读源码，沿着数据走。</h2>
-<p class="chapter-question">读完这一章，你应该能回答：入口在哪里？哪个模块负责什么？格式库与自研算法在哪里分开？</p>
-<div class="table-scroll"><table><thead><tr><th>建议顺序</th><th>源码</th><th>先关注什么</th></tr></thead><tbody>
-<tr><td>1 · 数据模型</td><td><a href="../include/core/Volume3D.hpp">core/Volume3D.hpp</a></td><td>尺寸、连续存储、边界检查、几何变换</td></tr>
-<tr><td>2 · 总体调用</td><td><a href="../app/pipeline.cpp">app/pipeline.cpp</a></td><td>输入怎样经过各个模块；每一步的中间结果</td></tr>
-<tr><td>3 · 增强</td><td>filters/Gaussian.hpp、Hessian.hpp、EigenSolver.hpp、Frangi.hpp</td><td>物理 sigma → 六分量 → 特征值 → 多尺度响应</td></tr>
-<tr><td>4 · 分割</td><td>segmentation/RegionGrowing.hpp、Nms.hpp、ConnectedComponents.hpp</td><td>候选条件、队列、邻接、种子和过滤</td></tr>
-<tr><td>5 · 骨架与图</td><td>skeleton/DistanceTransform.hpp、Thinning.hpp、CenterlineGraph.hpp、Prune.hpp</td><td>距离、删除判据、路径追踪与图歧义</td></tr>
-<tr><td>6 · 测量与输出</td><td>geometry/、io/GeometryReports.hpp、app/evaluate.cpp</td><td>世界坐标、估计定义、空值与评价范围</td></tr>
-<tr><td>7 · 验证</td><td>tests/ 与 benchmarks/</td><td>输入反例、解析真值、拓扑和端到端检查</td></tr>
-</tbody></table></div>
-<p class="note">源码链接用于本地仓库阅读；移动独立网页后，正文仍完整，但跳转源码需要保留相应目录。</p>
-<h3>读函数时，固定问四个问题</h3><ol><li>输入是什么：灰度、响应、二值 Mask，还是路径？</li><li>几何怎样传递：有没有丢掉 spacing/origin/direction？</li><li>输出是什么：它能回答什么问题，又不能回答什么？</li><li>用什么证据验证：测试是在检查数值、拓扑，还是仅检查能执行？</li></ol>
-<h3>目前的工程边界</h3><p>核心多数为头文件实现，CMake 的 <code>medvessel</code> 是 INTERFACE target。NIfTI 与可选 DCMTK 的格式适配在独立库中。Python/SimpleITK 只用于格式转换等实验辅助，没有用其滤波、分割或骨架算法替代核心实现。</p>
-<p>OpenMP 只并行独立卷积切片，单个体素的累加顺序保持不变；细化继续顺序执行。目前没有全体积流式分块，Hessian 六分量和中间 Volume 会占用较多内存。</p>
-<a href="#ref-code">查看完整接口表与模块契约 →</a>　<a href="#ref-build">查看构建依赖 →</a>
-</section>
-
-<section class="section" id="learn-evaluate" data-watch>
-<div class="kicker">06 / 实验与可信度</div><h2>看懂结果，先问“跟什么、在什么范围比”。</h2>
-<p class="chapter-question">读完这一章，你应该能回答：Dice 高能证明什么？为什么单个真实样例不能证明整个项目已经完成？</p>
-<div class="table-scroll"><table><thead><tr><th>指标</th><th>直观含义</th><th>不能替代什么</th></tr></thead><tbody><tr><td>Dice ↑</td><td>预测与参考的体素重叠程度，1 表示完全重合</td><td>细支连接、边界最坏偏差与图拓扑检查</td></tr><tr><td>HD95 ↓</td><td>两个方向最近边界距离的 95% 分位之最大值，单位 mm</td><td>不能单独说明所有局部区域都好</td></tr><tr><td>clDice ↑</td><td>骨架与管腔覆盖的一致程度，关注管状结构</td><td>真实解剖分支数量、直径与中心位置精度</td></tr><tr><td>中心线距离 ↓</td><td>两条骨架点集靠得有多近，单位 mm</td><td>需同时明确匹配/平均定义，不能只比较名字相同的数值</td></tr><tr><td>连通域数</td><td>Mask 分成几块</td><td>不等于分支图的边数，也不说明每一块都是血管</td></tr></tbody></table></div>
-<div class="formula">Dice = 2 × |预测 ∩ 参考| / (|预测| + |参考|)</div>
-<p>例如两者各有 10 个前景体素、重叠 8 个，Dice 就是 0.8。但即使只丢少量体素，如果恰好位于细支连接处，也可能切断整条分支。这解释了为什么还需要中心线、连通关系和可视化检查。</p>
-<h3>三种证据，不混为一谈</h3><ol><li><strong>单元与集成测试：</strong>启用 Qt 的完整构建中 27 个 CTest 项已通过，覆盖指定数值、几何、拓扑、CLI 与桌面任务案例；不是临床泛化证明。</li><li><strong>合成 Phantom：</strong>管道形状和尺寸由生成器控制，有几何真值；直管 Dice 约 0.957，弯曲/Y 型/带噪斜管也已加入回归。</li><li><strong>实际影像开发样例：</strong>病例 1 的 CTA 配 ImageCAS-X v2 标注，局部 ROI Dice 0.816186、clDice 0.875168、HD95 2.73998 mm。该病例已用于开发，且输入 ROI/种子有参考辅助。</li></ol>
-<h3>真实冠脉对照图</h3>
-<!-- CASE_FIGURE -->
-<p>橙色与青色接近，说明局部边界吻合；分叉和细支处的偏离、端部延伸或缺失，提示需要继续检查。最大投影会叠加不同深度，因此还要结合单切片和三维连接关系看。</p>
-<div class="callout warn"><strong>这里没有“独立测试集成绩”。</strong>程序 <code>medvessel_prepare_case</code> 通过参考标签的 EDT 选择种子与局部区域；这为调试提供了已知目标，不能当作全图自动定位已解决。更换标签还可能改变 ROI，不能把不同范围的指标解释为单因素算法提升。</div>
-<h3>数据的角色也要分清</h3><p>原始 ImageCAS 提供 CTA。ImageCAS-X v2 提供更细致的配对标注等资源，不重新分发原图。VMTK 的 aorta 适合调通影像与血管处理，但它的 level-set 是算法参考，不是完整人工金标准。ThinVesselSegmentation 的 data15 缺少物理几何说明，尚未用于毫米测量。</p>
-<h3>实验之外，性能也要有范围</h3><p>一次 80×80×48 两尺度增强中，1 线程约 0.426 秒，4 线程约 0.230 秒，两种输出逐体素一致。这只支持该环境和小体积上的结论；峰值内存、完整 CTA 吞吐量与多次重复统计还没完成。</p>
-<div class="callout"><strong>这一章记住：</strong>先看参考是什么、输入给了哪些辅助、评价范围多大、病例是否参与过开发，再看指标。能执行、能测量、测得准确、能推广，是四件不同的事。</div>
-<a href="#ref-data">查看全部数据版本、哈希与复现记录 →</a>　<a href="#ref-checks">查看验证范围与后续验收条件 →</a>
-</section>
-
-<section class="section" id="learn-qt" data-watch>
-<div class="kicker">07 / 桌面开发 · 从交互到算法</div><h2>Qt 工作台是怎么写出来的？</h2>
-<p class="chapter-question">先理解三个类怎样协作，再跟随一次按钮点击读代码。前四节建立画面，中间追踪运行、日志与结果，最后动手做小练习。你不需要先学完 Qt 的全部 API。</p>
-<div class="grid"><div class="card"><h3>MainWindow · 操作台</h3><p>控件、布局与信号连接；从表单取值，展示投影与报表。</p></div><div class="card"><h3>JobConfig · 参数表</h3><p>保存输入值，转换 ROI 种子，校验并生成 CLI 参数数组。</p></div><div class="card"><h3>AnalysisJob · 任务管理员</h3><p>异步控制算法进程，解析日志，通知阶段并确认最终状态。</p></div></div>
-<!-- QT_FIGURE -->
-<!-- QT_LEARNING_CONTENT -->
-<a href="#overview-code">只回顾 Qt 总体关系 →</a>　<a href="#ref-gui">只查启动与构建方法 →</a>
-</section>
+<!-- PIPELINE_LEARNING_CONTENT -->
 
 <section class="section" id="reference-desk" data-watch>
 <div class="kicker">查阅区 / 遇到具体问题再展开</div><h2>细节全部在本页，但不必连续读完。</h2>
@@ -278,19 +183,32 @@ V = (1 − exp(−RA² / 2α²))
 <section class="section" id="roadmap" data-watch>
 <div class="kicker">放回最初的计划中理解</div><h2>这是已经形成闭环的第一版，还在继续验证。</h2>
 <p>原始计划依次推进影像基础、Hessian/Jacobi、Frangi、分割、中心线/几何、性能/可视化。当前前五部分已有可运行基线，第六部分已有卷积并行与静态预览，但不能据此宣称所有阶段均已完成。</p>
-<p>Qt 6 参数与结果工作台已经接入。后续重点是固定独立病例与参数协议、检验细支/断裂/错连和几何误差、扩展真实 DICOM 兼容性，再完善大体积性能、交互切片与 VTK 三维显示。具体待办可展开上方“进度与剩余工作”。</p>
+<p>Qt 6 工作台已支持三方向切片、窗宽窗位、Mask 叠加、点选种子、框选 ROI、可选 VTK 三维/分支表双向联动，以及三维到结果切片定位。选中分支后点击“定位到结果切片”可查看黄色十字；原图不可用时明确显示仅有结果 Mask。后续重点是独立病例验证、算法稳定性、DICOM 兼容性、大体积性能、标准解剖平面重采样及切片选点反向定位三维。具体待办可展开上方“进度与剩余工作”。</p>
 <h3>参考项目分别用来学什么？</h3>
 <div class="table-scroll"><table><thead><tr><th>项目</th><th>学习用途</th><th>本项目的关系</th></tr></thead><tbody>
 <tr><td><a href="https://github.com/yzhong52/ThinVesselSegmentation" target="_blank" rel="noopener">ThinVesselSegmentation</a></td><td>阅读传统 vesselness、特征值与 NMS 的 C++ 思路</td><td>算法参考与 data15 示例来源，不直接照搬旧工程</td></tr>
 <tr><td><a href="https://github.com/vmtk/vmtk" target="_blank" rel="noopener">VMTK</a></td><td>血管建模、中心线、截面分析与示例数据</td><td>提供 aorta 演示参考，不替代自研主流程</td></tr>
 <tr><td><a href="https://github.com/InsightSoftwareConsortium/ITK" target="_blank" rel="noopener">ITK</a></td><td>医学影像几何与独立算法对照</td><td>核心处理路径不依赖其现成同类算法；SimpleITK 辅助格式转换</td></tr>
-<tr><td><a href="https://github.com/Kitware/VTK" target="_blank" rel="noopener">VTK</a></td><td>三维渲染与网格显示</td><td>原计划的后续可视化选项，当前尚未接入界面</td></tr>
+<tr><td><a href="https://github.com/Kitware/VTK" target="_blank" rel="noopener">VTK</a></td><td>三维渲染与网格显示</td><td>可选接入 Qt：Mask 等值面、中心线、方向角标与分支表双向联动；不替代自研算法</td></tr>
 </tbody></table></div>
 <p class="note">本页按学习顺序整合现有文档；原始规划保留在仓库中用于历史对照。当前事实以验证与进度记录为准。离线不影响正文、教学交互和内嵌图像；外部参考链接需要联网。</p>
 <a href="#overview-home">学完后，回到总体概览 →</a>
 </section>
-<div class="footer">MEDVessel · 项目学习与复现手册 · 记录日期 2026-11-02<br>本页可独立离线阅读。更新源文档后，运行 tools/build_learning_guide.py 重新生成。</div>
+<div class="footer">MEDVessel · 项目学习与复现手册 · 记录日期 2026-11-03<br>本页可独立离线阅读。更新源文档后，运行 tools/build_learning_guide.py 重新生成。</div>
 </div>
+<div class="panel" id="panel-qt" role="tabpanel" aria-labelledby="tab-qt" data-panel="qt" hidden>
+<section class="hero" id="qt-home" data-watch><div class="eyebrow">PART III / DESKTOP WORKBENCH</div><h1>Qt 工作台：从使用到实现。</h1><p>这一页单独学习桌面开发：先看界面如何调用算法，再按需展开参数、异步任务、切片和三维联动的代码。算法原理保留在“深入学习”页。</p><a class="hero-link" href="#learn-start">回到算法原理 →</a></section>
+<section class="section" id="learn-qt" data-watch>
+<div class="kicker">从交互到算法</div><h2>Qt 工作台是怎么写出来的？</h2>
+<p class="chapter-question">先理解三个类怎样协作，再跟随一次按钮点击读代码。前四节建立画面，中间追踪运行、日志与结果，最后动手做小练习。你不需要先学完 Qt 的全部 API。</p>
+<div class="grid"><div class="card"><h3>MainWindow · 操作台</h3><p>控件、布局与信号连接；从表单取值，展示投影与报表。</p></div><div class="card"><h3>JobConfig · 参数表</h3><p>保存输入值，转换 ROI 种子，校验并生成 CLI 参数数组。</p></div><div class="card"><h3>AnalysisJob · 任务管理员</h3><p>异步控制算法进程，解析日志，通知阶段并确认最终状态。</p></div></div>
+<!-- QT_FIGURE -->
+<!-- QT_LEARNING_CONTENT -->
+<a href="#overview-code">只回顾 Qt 总体关系 →</a>　<a href="#ref-gui">只查启动与构建方法 →</a>
+</section>
+
+<section class="section" id="qt-reference" data-watch><h2>Qt 操作与构建查阅</h2><p>需要启动、打包或排错时再展开；通用 C++ 构建另见<a href="#ref-build">构建与依赖</a>。</p><!-- QT_REFERENCE_CONTENT --></section>
+<div class="footer">Qt 工作台 · 独立阅读页</div></div>
 </main></div>
 <div id="toast" class="toast" role="status" hidden></div>
 <script>
@@ -310,12 +228,13 @@ function activate(view){
 function reveal(target){const panel=target.closest('[data-panel]');if(panel&&panel.dataset.panel!==current)activate(panel.dataset.panel);for(let p=target;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true}
 function followHash(){let id;try{id=decodeURIComponent(location.hash.slice(1))}catch{return}if(!id)return;const target=document.getElementById(id);if(target){reveal(target);requestAnimationFrame(()=>target.scrollIntoView({block:'start'}))}}
 document.addEventListener('click',event=>{const link=event.target.closest('a[href^="#"]');if(!link)return;const target=document.getElementById(link.getAttribute('href').slice(1));if(!target)return;event.preventDefault();reveal(target);if(location.hash!==link.getAttribute('href'))location.hash=link.getAttribute('href');else target.scrollIntoView({block:'start'});const mobile=link.closest('.outline-mobile');if(mobile)mobile.open=false});
-tabs.forEach((tab,index)=>{tab.addEventListener('click',()=>{activate(tab.dataset.view);location.hash=tab.dataset.view==='overview'?'overview-home':'learn-start'});tab.addEventListener('keydown',event=>{let next=index;if(event.key==='ArrowRight')next=(index+1)%tabs.length;else if(event.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=tabs.length-1;else return;event.preventDefault();tabs[next].focus();tabs[next].click()})});
+tabs.forEach((tab,index)=>{tab.addEventListener('click',()=>{activate(tab.dataset.view);location.hash=({overview:'overview-home',deep:'learn-start',qt:'qt-home'})[tab.dataset.view]});tab.addEventListener('keydown',event=>{let next=index;if(event.key==='ArrowRight')next=(index+1)%tabs.length;else if(event.key==='ArrowLeft')next=(index+tabs.length-1)%tabs.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=tabs.length-1;else return;event.preventDefault();tabs[next].focus();tabs[next].click()})});
 function progress(){const total=document.documentElement.scrollHeight-innerHeight;document.getElementById('reading-progress').style.width=(total>0?Math.min(100,scrollY/total*100):0)+'%'}
 window.addEventListener('scroll',progress,{passive:true});window.addEventListener('resize',progress);window.addEventListener('hashchange',followHash);
+document.addEventListener('toggle',progress,true);
 let toastTimer;function toast(message){const box=document.getElementById('toast');box.textContent=message;box.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>box.hidden=true,2400)}
 document.querySelectorAll('pre').forEach(pre=>{const code=pre.querySelector('code');if(!code)return;const button=document.createElement('button');button.className='copy';button.textContent='复制';button.setAttribute('aria-label','复制代码块');button.addEventListener('click',async()=>{try{if(!navigator.clipboard)throw Error('clipboard unavailable');await navigator.clipboard.writeText(code.textContent);toast('已复制')}catch{const range=document.createRange();range.selectNodeContents(code);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);toast('已选中代码，按 Ctrl+C 或 ⌘C 复制')}});pre.appendChild(button)});
-const refs=[...document.querySelectorAll('.reference')];document.getElementById('expand-references').addEventListener('click',()=>{refs.forEach(r=>r.open=true);progress()});document.getElementById('collapse-references').addEventListener('click',()=>{refs.forEach(r=>r.open=false);document.getElementById('reference-desk').scrollIntoView({block:'start'});progress()});
+const refs=[...document.querySelectorAll('#reference-desk .reference')];document.getElementById('expand-references').addEventListener('click',()=>{refs.forEach(r=>r.open=true);progress()});document.getElementById('collapse-references').addEventListener('click',()=>{refs.forEach(r=>r.open=false);document.getElementById('reference-desk').scrollIntoView({block:'start'});progress()});
 const values=[0,.12,.48,.22,.16,0,.18,.18,0,.66,.27,0],low=document.getElementById('demo-low'),high=document.getElementById('demo-high');
 function updateDemo(changed){if(Number(low.value)>Number(high.value)){if(changed===low)high.value=low.value;else low.value=high.value}const l=Number(low.value),h=Number(high.value),accepted=values.map(()=>false),seeds=values.map(v=>v>=h),queue=[];seeds.forEach((seed,i)=>{if(seed){accepted[i]=true;queue.push(i)}});for(let head=0;head<queue.length;head++)for(const n of [queue[head]-1,queue[head]+1])if(n>=0&&n<values.length&&!accepted[n]&&values[n]>=l){accepted[n]=true;queue.push(n)}document.getElementById('demo-low-value').value=l.toFixed(2);document.getElementById('demo-high-value').value=h.toFixed(2);const cells=document.getElementById('demo-cells');cells.replaceChildren();values.forEach((value,i)=>{const cell=document.createElement('div');cell.className='cell '+(seeds[i]?'seed':accepted[i]?'accepted':value>=l?'candidate':'');cell.textContent=value.toFixed(2);cell.setAttribute('aria-label','位置 '+i+'，响应 '+value.toFixed(2)+'，'+(seeds[i]?'强种子':accepted[i]?'传播保留':value>=l?'未连通候选':'未达到 low'));cells.appendChild(cell)});document.getElementById('demo-status').textContent='当前 '+seeds.filter(Boolean).length+' 个强种子，最终保留 '+accepted.filter(Boolean).length+' 个位置。浅绿色孤立候选不会因达到 low 就自动保留。'}
 low.addEventListener('input',()=>updateDemo(low));high.addEventListener('input',()=>updateDemo(high));updateDemo();

@@ -1,5 +1,7 @@
 # Qt 工作台是怎么写出来的
 
+新增功能说明：三方向原网格切片、窗宽窗位、Mask 叠加、鼠标点选与框选、VTK 三维联动与结果切片定位已接入，具体实现见本文末尾第 17～21 节；前文的投影调用链仍保留。
+
 这篇讲实现思路和代码，使用步骤见 [桌面操作手册](gui.md)。不要求你先学完 Qt：有基本 C++ 类、函数、指针和 lambda 知识，就可以从这里开始。
 先读前四节，建立整体画面；随后跟着一次“开始分析”读实现；最后通过小练习修改界面。代码片段用于讲解，省略部分会明确标出，完整实现以源码为准。
 
@@ -15,19 +17,7 @@
 | [AnalysisJob](../app/gui/AnalysisJob.hpp) | 任务管理员 | 启动/停止进程、读取日志、通知阶段、记录最终状态 |
 | [pipeline.cpp](../app/pipeline.cpp) | 算法执行入口 | 运行原有 C++ 增强、分割、骨架和测量流程 |
 
-```text
-GUI 进程：medvessel_gui
-┌────────────────────────────────────────────────────────┐
-│ MainWindow ──读取控件──→ JobConfig                       │
-│     │                       │                           │
-│     └── start(config) ──→ AnalysisJob ──→ QProcess        │
-│     ↑                         │                         │
-│     └──── 阶段、日志、成功/失败通知 ─┘                      │
-└───────────────────────────────────────┬────────────────┘
-                                        │ 启动另一个程序
-算法进程：medvessel_cli                   ↓
-输入影像 → 原有算法 → NIfTI / CSV / JSON / SVG → GUI 读回展示
-```
+![GUI 组织任务，独立 CLI 计算，完成后 GUI 读取结果](figures/qt-process.svg)
 
 核心点：GUI 传递参数，CLI 执行算法，文件保存结果。GUI 没有在按钮回调中直接计算 Frangi，也没有重新实现一份血管算法。
 当前这条链路不用 QThread；QProcess 是另一个操作系统进程的控制对象，不能把它理解成“创建了一个 Qt 工作线程”。
@@ -252,7 +242,7 @@ preview.svg → QSvgRenderer（解析 SVG）
 ```
 
 适应窗口调用 fitInView，按钮缩放调用 view 的 scale。这是在缩放一张投影图，不是在重新计算影像，也不是三维体绘制。
-目前窗口不直接读取 NIfTI 来画切片，所以接入三方向切片需要新增体数据加载、切片采样、窗宽窗位和方向处理，不能只给 SVG 加一个切片滑条。
+投影页本身不读取 NIfTI 来画切片；新增的 SliceViewer 单独负责体数据加载、切片采样、窗宽窗位与 Mask 叠加，详见第 17、18 节，不能只给 SVG 加一个切片滑条。
 
 表格则采用 Qt 的模型/视图方式：CSV 读成 QStandardItemModel，QTableView 负责展示。数字用 DisplayRole 存成数值，便于按数值排序，避免把字符串 `10` 排在 `2` 前面。空测量显示为破折号，不当成零。
 `setSortingEnabled(false)` 后批量装入，再恢复排序，避免边插入边排序打乱装入过程。当前 CSV 解析只适合本项目固定、无引号转义的简单数字表，不是通用 CSV 解析器。
@@ -275,10 +265,10 @@ SVG 的 renderer 尤其要注意：`setSharedRenderer()` 不把 renderer 的所�
 下面摘取构建中的关键句，省略源文件列表等上下文：
 
 ```cmake
-find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets SvgWidgets)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets SvgWidgets Concurrent)
 set_target_properties(medvessel_desktop PROPERTIES AUTOMOC ON)
 target_link_libraries(medvessel_desktop PUBLIC
-    medvessel Qt6::Widgets Qt6::SvgWidgets)
+    medvessel Qt6::Widgets Qt6::SvgWidgets Qt6::Concurrent)
 add_executable(medvessel_gui WIN32 app/gui/main.cpp)
 target_link_libraries(medvessel_gui PRIVATE medvessel_desktop)
 ```
@@ -338,7 +328,99 @@ qwindows.dll 是平台插件的一部分；找到 Qt6Widgets.dll 不代表已经
 - 为什么能响应：事件循环继续工作，耗时算法在独立 CLI 进程里执行。
 - 怎么知道进度：读取字节，按行缓冲解析阶段，再通过信号更新窗口。
 - 怎么确认完成：进程正常退出、必要输出检查、写最终状态；中止目录不当完成结果。
-- 怎么显示结果：SVG 进入 Graphics View，CSV 进入 Model/View；当前不是体数据切片或三维渲染。
+- 怎么显示结果：投影页的 SVG 进入 Graphics View，CSV 进入 Model/View；新增 SliceViewer 显示体数据切片，可选 ThreeDViewer 显示三维表面和中心线。
 - 怎么扩展：显示需求放窗口，参数换算放 JobConfig，进程生命周期放 AnalysisJob，算法仍放核心/CLI。
 
 现在按 `main.cpp → MainWindow 构造与连接 → config/startAnalysis → JobConfig::arguments → AnalysisJob → openResult` 的顺序读一遍源码，你应该能把整个桌面入口串起来。
+
+## 17. 三方向切片：体数据怎样变成 QImage
+
+新增 `app/gui/SliceViewer.hpp/.cpp`。MainWindow 的“浏览输入切片”将输入路径传给 `load()`，QtConcurrent 在后台读取影像，QFutureWatcher 在 GUI 线程收到 finished 后更新控件。后台函数只返回数据和错误，不访问窗口。改变输入路径会禁用旧切片，重新加载先清空旧图。
+
+三个平面用轴映射表表示：XY 为 `{0,1,2}`，XZ 为 `{0,2,1}`，YZ 为 `{1,2,0}`，每行依次是水平轴、垂直轴、切层轴。绘图时水平索引取 x，垂直索引取 height-1-y，切层索引来自滑块。翻转垂直索引是因为屏幕 y 向下增长。灰度经窗宽窗位映射后写入 RGB32 图像，方便叠加彩色 Mask。
+
+QGraphicsPixmapItem 按水平和垂直轴 spacing 缩放，再适应窗口，让各向异性体素呈现正确物理比例。方向标签取 direction 的对应列，按符号映射 R/L、A/P、S/I，斜向轴显示多个字母。这里浏览的是原网格切片，没有重建任意采集方向下的标准解剖平面。
+
+测试用非立方尺寸、非等距 spacing 和反向方向矩阵的体数据，核对切片像素、三个平面尺寸、切层边界和加载失败时旧图清除；同时读取实际 NIfTI 合成样例。窗宽窗位和 Mask 叠加见下一节，点选种子与框选 ROI 见第 19 节。
+
+## 18. 窗宽窗位与 Mask：共用体素映射
+
+窗宽 W 必须大于零，窗位 L 是显示区间中心，代码先算 `low=L-W/2`，再把 `(value-low)/W*255` 截断到 0～255，最后转成整数灰度。区间以下显示黑色，以上显示白色。修改显示范围不会修改 Volume3D 内的数据，也不会改变算法分割阈值。载入底图默认采用全范围；CT 血管按钮只提供 W=700、L=250 的显示预设，不推断数据是否为 HU。
+
+三个平面已经把屏幕像素映射到同一个体素索引 q，所以叠加时直接用 q 查询 Mask。为防止错位，`setMask()` 先检查尺寸及 spacing/origin/direction，再验证数据必须为有限的 0 或 1；不匹配则拒绝，不能仅缩放图片到相同宽高。几何比较使用很小的绝对容差，容许文件格式往返的舍入误差，不代表允许未配准数据。
+
+输出图改为 QImage::Format_RGB32。背景写入 `(gray,gray,gray)`，前景颜色为橙色 `(255,128,0)`，按 `gray*(1-alpha)+color*alpha` 混合三个颜色通道。alpha 来自 0～100 的滑块；为零时完全显示底图，为一时完全显示 Mask 颜色。这样 Mask 的空间位置不受窗宽窗位影响。
+
+Mask 文件也由独立 QFutureWatcher 和 QtConcurrent 后台读取，主线程完成几何校验和显示。源文件与 Mask 加载互斥，避免同一次叠加期间底图被替换。重新加载底图或尝试加载另一个 Mask 时先清除旧叠加，失败时明确显示原因。测试检查三方向同一体素的橙色位置、背景不变、开关行为、错位网格拒绝、概率图拒绝及实际 NIfTI Mask 加载。
+
+## 19. 鼠标选取：沿显示变换反向计算索引
+
+实现位于 SliceViewer::voxelAt()、eventFilter()、setSelection() 和 MainWindow 的信号连接。先把鼠标在 viewport 中的位置转换到 scene，再除以该轴 spacing，恢复到图片像素单位。下面是 voxelAt() 的连续关键片段，a 是当前平面的三轴映射，d 是底图尺寸：
+
+```cpp
+auto point=views_[p]->mapToScene(viewport);
+double x=point.x()/spacing[a[0]],y=point.y()/spacing[a[1]];
+if(!clamp&&(x<0||y<0||x>=d[a[0]]||y>=d[a[1]]))return false;
+q[a[0]]=static_cast<std::size_t>(std::clamp(std::floor(x),0.,double(d[a[0]]-1)));
+q[a[1]]=d[a[1]]-1-static_cast<std::size_t>(std::clamp(std::floor(y),0.,double(d[a[1]]-1)));
+q[a[2]]=sliders_[p]->value();
+```
+
+floor 选出鼠标落入的像素格，垂直轴用 size-1-y 撤销显示时的上下翻转，第三轴直接取当前切层。鼠标不需要再乘 direction：当前显示的是原网格切片，方向矩阵用于物理定位和方向标签，原图索引仍沿数组轴定义。点在图像外时返回 false；拖框终点使用 clamp，把越界终点截到图像边缘。
+
+事件过滤器截获左键按下、移动、释放。点选模式在按下时发出 seedPicked；框选模式记录起点体素、平面和层号，用 QRubberBand 显示拖动范围，在释放时发出 roiPicked。两轴分别取 min/max，并用 max-min+1 得到包含两端体素的尺寸；第三轴沿用已有合法 ROI 或底图全范围。切层或切换模式时取消拖框，防止混合不同平面的起止点。
+
+MainWindow 接收信号后检查当前任务未运行、原图索引模式已勾选、切片路径仍与输入相符，再追加去重后的种子或替换 ROI 文本。文本变化调用 setSelection() 重新解析合法范围并重绘，所以鼠标与手工输入共享同一份参数来源。图形标记作为图片项的子项，继承 spacing 缩放；种子只画在对应层，ROI 只画在相交层。开始分析仍复用 JobConfig 做原图到 ROI 局部索引的转换与越界检查。
+
+验证时使用非等距 spacing、反向方向矩阵和三个不同切层，模拟真正的 viewport 鼠标事件，检查发出的三维坐标；再验证反向拖框、跨平面收紧 ROI、禁用选取，以及主窗口文本回填和重复点去重。
+
+## 20. VTK 三维显示：几何、渲染与选择分开
+
+新增 `app/gui/ThreeDViewer.hpp/.cpp`。打开结果只记录目录并清除旧对象，用户点击载入后，QtConcurrent 在后台执行 prepare()，读取 Mask 与中心线 CSV，生成 vtkPolyData。QFutureWatcher 返回 GUI 线程后再创建 mapper/actor 并添加到 renderer。切换目录会递增 generation，旧任务即使稍后完成也不能覆盖新目录。线程只传递数据，不在后台操作 OpenGL 窗口。
+
+表面提取的主要调用如下（教学节选，省略 Mask 分配与校验）：
+
+```cpp
+vtkNew<vtkFlyingEdges3D> contour;
+contour->SetInputData(image);
+contour->SetValue(0, .5);
+vtkNew<vtkTransform> transform;
+transform->SetMatrix(matrix);
+vtkNew<vtkTransformPolyDataFilter> world;
+world->SetTransform(transform);
+world->SetInputConnection(contour->GetOutputPort());
+```
+
+image 先使用真实 spacing，但保持单位方向和局部原点。体数据外圈补一层 0，图像原点设为负 spacing，原来索引 0 的中心仍在局部位置 0；这样位于体边缘的前景也能闭合表面。matrix 左上 3×3 写入 direction，最后一列写入 origin，正好实现 world=direction×local+origin。随后重算法线并自动定向，避免反射方向下的光照异常。不要再对已经是 RAS 毫米的 CSV 中心线应用一次图像变换。
+
+每条中心线按 branch_id 分组，用 point_id 验证连续顺序，再由 vtkPoints 与 vtkCellArray 组成折线。场景为每个实际 ID 保存一个 actor；表格当前行变化时读取第 0 列的分支 ID，再调用 selectBranch()。不能把排序后的行号当作 ID。选中分支改为橙色并加粗，摄像机位置与焦点同时平移到分支中心，保留旋转和缩放。
+
+三维反选使用 vtkCellPicker，并把可拾取列表限定为中心线 actor，表面本身不参与拾取。鼠标移动超过阈值时视为旋转，释放时不执行选中；单击时将 Qt 左上原点坐标转换为 VTK 左下原点，并考虑 devicePixelRatioF。找到 actor 的实际 ID 后发出 branchPicked，主窗口定位表格对应行。R/A/S 角标使用独立的 vtkOrientationMarkerWidget，不改变主场景几何。
+
+QVTKOpenGLNativeWidget 使用 vtkGenericOpenGLRenderWindow，应用在创建 QApplication 前设置 defaultFormat，遵循 [VTK 官方 Qt 接入说明](https://vtk.org/doc/nightly/html/classQVTKOpenGLNativeWidget.html)。只在可见且上下文有效时渲染；offscreen/minimal 不创建 OpenGL 控件，因此这两种平台可以测试表面边界、物理变换、CSV 校验及表格联动，但不能证明真实显卡渲染或鼠标拾取正常。
+
+## 21. 三维到切片：传世界坐标，不传屏幕位置
+
+ThreeDViewer::selectBranch() 从选中分支的 vtkPolyData 中取序列中间采样点，发出 branchLocationChanged(x,y,z)。这个点位于中心线路径上，不能用 actor 包围盒中心替代，因为弯曲血管的包围盒中心可能落在血管外。三维拾取后则发送 vtkCellPicker::GetPickPosition() 的实际世界位置；先完成表格回选，再发送实际位置，避免表格的中间采样点覆盖鼠标目标。
+
+MainWindow 接收坐标后调用只读结果页的 focusWorld()。结果尚未载入时先缓存世界坐标；用户点击“定位到结果切片”才后台读取运行记录、底图和 Mask，载入后再应用缓存目标。独立的 resultSlices 与 inputSlices 分别命名，避免多个同类控件之间的查找或参数串用。
+
+关键转换如下（节选自 SliceViewer::focusWorld）：
+
+```cpp
+auto index=volume_->geometry().worldToIndex(world);
+auto d=volume_->dimensions();
+std::array<std::size_t,3> q{};
+for(int a=0;a<3;++a){
+    if(index[a]<-1e-3 || index[a]>double(d[a]-1)+1e-3)
+        return fail("所选位置不在当前结果切片网格内");
+    q[a]=static_cast<std::size_t>(
+        std::clamp(std::round(index[a]),0.,double(d[a]-1)));
+}
+```
+
+worldToIndex 撤销 origin、direction 和 spacing 的变换，round 取最近体素中心。先验证范围，再做浮点误差内的截断；容差是体素单位，只容许文件往返误差，不允许把真正越界目标硬塞到边缘。XY/XZ/YZ 三个滑块分别设置 z/y/x，使用 QSignalBlocker 避免每次赋值都重绘；全部设置后统一 refresh()。黄色虚线作为图片子项，位置使用 q+0.5 的像素格中心，并沿垂直方向反转，继承显示项的 spacing 变换。
+
+loadResult() 先读取并验证结果 Mask，再按运行记录读取原始输入和裁剪 ROI。cropVolume 已将裁剪起点转换进新 origin，所以跨视图联动始终使用世界坐标，不重复叠加 ROI 偏移。原图读取失败或几何不符时，明确退回到 Mask 底图；结果文件本身损坏则报告失败。结果页没有连接任何写参数信号，浏览定位不会改变分析配置。
+
+加载器的 generation 随清空或新请求递增，完成回调只接受对应版本；如果加载中又请求另一结果，只保留最新请求，旧结果完成后转去加载最新目录。clear() 同时移除旧图和十字。测试覆盖真实 ROI 裁剪灰度、反向/旋转方向矩阵、三个滑块坐标、原图缺失回退、越界拒绝、快速切换结果，以及整个三维/表格/结果页链路不修改 JobConfig。
