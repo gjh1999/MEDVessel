@@ -1,0 +1,69 @@
+<section class="section" id="learn-segment" data-watch>
+<div class="kicker">03 / 血管分割</div><h2>把“像血管的分数”，变成血管区域。</h2>
+<p>承接<a href="#learn-frangi">第二章的 Frangi 响应</a>：响应图仍是连续灰度，不能直接当作管腔。分割结合原图灰度、种子和连通关系，输出 0/1 的 <strong>Mask</strong>，交给下一章提取骨架。</p>
+<ol class="pipeline-flow" aria-label="血管分割流程图"><li><b>原始灰度图 + Frangi 响应图</b><span>同一物理网格，分别提供强度约束与管状线索</span></li><li><b>确定起点：手工种子 / NMS 种子 / 高阈值种子</b><span>三种初始化方式，随后共用区域生长</span></li><li><b>队列向邻域传播</b><span>只接纳达到 low、满足灰度范围且与已接纳区域相连的体素</span></li><li><b>按需过滤小连通域 → 输出二值 Mask</b><span>得到有粗细的管腔区域，尚不是中心线</span></li></ol>
+<p><strong>high 决定自动起点，low 决定可传播区域。</strong>弱响应只有连到种子才保留；手工种子不受 high 限制，但仍需满足 low 和灰度条件。</p>
+<details class="aside-detail"><summary>三种种子模式、NMS 与 6/26 邻接</summary><div><ul><li>有手工种子：从手工点开始，开启 NMS 也不额外生成种子。</li><li>无手工种子且开启 NMS：在横截面保留局部极大响应，用大于 0 且达到 high 的点初始化；生长仍使用完整响应图。</li><li>两者都没有：使用所有达到 high 的点做双阈值传播。</li></ul><p>6 邻接只通过体素面连接；26 邻接还允许棱与角。灰度上下限作用于原图，确认是 HU 后才按 HU 解释。越界种子报错，不符合候选条件的种子忽略；可按体素数过滤小连通域。</p></div></details>
+<details class="aside-detail"><summary>动手看：强种子怎样带着弱响应生长？</summary><div><p>一维教学例子，仅用左右邻接；真实程序使用三维 6/26 邻域。调节两个滑块，观察孤立弱响应为什么不会自动保留。</p><div class="demo" id="threshold-demo"><div class="sliders"><label for="demo-low">low <input id="demo-low" type="range" min="0" max="1" step="0.01" value="0.10"><output id="demo-low-value" for="demo-low">0.10</output></label><label for="demo-high">high <input id="demo-high" type="range" min="0" max="1" step="0.01" value="0.30"><output id="demo-high-value" for="demo-high">0.30</output></label></div><div class="cells" id="demo-cells" aria-label="十二个连续位置的响应值"></div><div class="legend"><i style="background:#176e59"></i>强种子 <i style="background:#b9dcc9"></i>被连通传播保留 <i style="background:#e5ecd9"></i>达到 low 但未连接 <i style="background:white;border:1px solid #c7d4c1"></i>未达到 low</div><p class="demo-status" id="demo-status" aria-live="polite"></p></div></div></details>
+<!-- CODE_SEGMENT -->
+<a class="return" href="#learn-centerline">下一章：Mask 怎样缩成骨架，再组织成图 →</a>
+</section>
+
+<section class="section" id="learn-centerline" data-watch>
+<div class="kicker">04 / 骨架与图结构</div><h2>先得到细路径，再把路径变成节点和分支。</h2>
+<p>上一章的 Mask 保存整块管腔；这一章去掉多余厚度，保留走向与连接。<strong>项目最后会把骨架变成图结构：</strong>骨架是体素图像，图则是端点、分叉节点和连接它们的分支，为下一章逐分支测量做准备。</p>
+<ol class="pipeline-flow" aria-label="骨架提取与图构建流程图"><li><b>二值 Mask → EDT 距离场</b><span>知道每个前景体素离最近背景多远</span></li><li><b>按距离从外向内尝试细化</b><span>保护端点，只删除不改变局部拓扑的 simple point</span></li><li><b>反复检查，直到没有可删除点 → 骨架</b><span>删除后重新入队受影响邻居；可按需修剪短枝，默认关闭</span></li><li><b>识别端点和分叉簇，追踪中间路径 → Graph</b><span>节点存连接关系，分支存有序中心线坐标及长度</span></li></ol>
+<details class="aside-detail" id="skeleton-methods"><summary>取骨架有哪些方法？本项目用了哪一种？</summary><div><div class="table-scroll"><table><thead><tr><th>方法</th><th>基本做法</th><th>本项目关系</th></tr></thead><tbody><tr><td>拓扑细化</td><td>逐步剥掉边界，保护连接、端点和孔洞；二维常见 Zhang–Suen、Guo–Hall，三维常见 Lee 类方法</td><td>属于这一类，但采用自研距离优先 simple-point 细化，并非直接实现上述命名算法</td></tr><tr><td>距离场 / 中轴方法</td><td>依据到边界的距离、最大内切圆或球寻找中心结构</td><td>使用 EDT 指导删除顺序和估计半径，不是简单把距离局部极大点连起来</td></tr><tr><td>路径追踪 / 最短路径</td><td>给定根和目标点，在代价场中追踪中心路径</td><td>属于另一条中心线提取路线，当前主流程没有采用</td></tr></tbody></table></div><p class="note">方法分类参考 <a href="https://scikit-image.org/docs/stable/auto_examples/edges/plot_skeleton.html" target="_blank" rel="noopener">scikit-image 的骨架与中轴示例</a>、<a href="https://imagej.net/plugins/skeletonize3d" target="_blank" rel="noopener">ImageJ Skeletonize3D</a>；这里只作方法对照，不将外部实现当成本项目算法。</p></div></details>
+<details class="aside-detail" id="skeleton-2d-3d"><summary>先理解 2D，再推广到 3D：哪些规则必须改变？</summary><div><div class="grid"><div class="card"><h3>2D：在 3×3 邻域检查</h3><p>从二值图边缘开始，判断中心像素是否为端点、删除后是否断开前景或改变背景孔洞。Zhang–Suen 等方法按子迭代规则筛选边界像素，反复执行到稳定，保留细线。</p></div><div class="card"><h3>3D：在 3×3×3 邻域检查</h3><p>像素变体素，平面边缘变空间表面；需同时考虑连接、空腔和隧道。邻接从二维常用 4/8 扩展到三维 6/18/26，拓扑判据也必须重新定义。</p></div></div><p><strong>不能每张切片分别做 2D 骨架，再堆起来当 3D 骨架。</strong>这样没有保护跨层连接，斜行与分叉血管的空间结构也可能丢失。三维中轴还可能包含片状结构，不会天然只剩线；针对管状目标仍需合适的细化与路径组织。</p><p>本项目用前景 26、背景 6 邻接：在局部邻域重新检查前景连通性与背景拓扑，只顺序删除当前合法点。删除一个点后，其邻居需要重新判断；不能把所有“看起来能删”的点同时删除。这是三维距离优先细化基线，不是 Lee 算法的完整复现。</p></div></details>
+<details class="aside-detail" id="skeleton-delete-rule"><summary>到底哪些体素可以删？为什么还要检查背景？</summary><div>
+<p>细化一开始处理的是有厚度的 Mask，还没有得到最终骨架。1 是当前保留的前景，0 是其余位置的背景；“删除 P”只是把 mask[P] 从 1 改成 0，数组大小不变。最终骨架是剩下的前景，周围的 0 依然存在。</p>
+<div class="table-scroll"><table><thead><tr><th>按什么顺序判断</th><th>当前项目的规则</th></tr></thead><tbody><tr><td>先选一个候选点</td><td>按原始 Mask 的 EDT 从小到大出队，一次判断一个前景体素</td></tr><tr><td>数周围前景邻居</td><td>3×3×3 除中心，共 26 个位置；前景邻居为 0 或 1 时保留，保护孤立点和端点</td></tr><tr><td>判断局部前景连接</td><td>中心点不参与连接时，其余前景邻居按 26 邻接必须只有一个连通分量</td></tr><tr><td>判断局部背景拓扑</td><td>局部背景拓扑数必须为 1，避免从实体内部挖出新空腔，或改变已有背景通道</td></tr><tr><td>以上都通过</td><td>把中心点改为 0，再把受影响的前景邻居按需加入队列重新判断</td></tr></tbody></table></div>
+<p><strong>不是“邻居数在 2～26 之间就删”。</strong>这个范围只表示没有被端点规则直接排除；能否删除还取决于邻居如何排列和连接。26 邻接允许面、棱、角相连；6 邻接只允许面相连，这两个数字也不是“要删除多少个点”。</p>
+<p>为什么骨架算法要看背景？以二维实心块示意，P 周围全部为前景：</p>
+<pre data-language="text"><code>删除前          假设删除 P 后
+1 1 1           1 1 1
+1 P 1     →     1 0 1
+1 1 1           1 1 1</code></pre>
+<p>右图的前景仍然连着，但凭空多了一个背景孔洞；三维中对应在实心体内部挖出空腔。因此只问“前景还连不连”不够。实际三维代码中，内部点的 26 个邻居若全为前景，局部背景拓扑数为 0，便不能删。</p>
+<p><strong>检查发生在删除之前。</strong>代码用局部 simple-point 判据判断这次删除是否允许，不是先随意删，再对整幅骨架做一次全局连通性检查。P 删除后，邻居的前景数量和排列已经改变，所以它们下次出队必须按当前 Mask 重算；这仍是在判断“下一个点能不能删”，并不是调用一个“已经是骨架了吗”的检测器。队列处理完后，留下的是该细化规则下不再继续删除的结果。</p>
+<p class="note">对照 Thinning.hpp：前景连通分量在去掉中心的 26 邻域中计数；背景在 18 邻域内按 6 邻接计数，只统计与中心的面邻居相接的分量。中心本身不计入这两个局部计数；背景拓扑数为 1 不等于背景邻居恰好只有一个。</p>
+</div></details>
+<details class="aside-detail"><summary>EDT 的含义与公式</summary><div><p>EDT 是到最近背景体素中心的物理距离。内部通常距离较大，可用于由外向内的处理顺序，也作为后续局部半径的近似。</p><div class="formula">D(p) = min[q 属于体积内背景] √[(Δx·sx)² + (Δy·sy)² + (Δz·sz)²]</div><p>本实现沿三个轴计算抛物线下包络，得到带 spacing 的离散欧氏距离；体积内没有背景时距离为无穷。</p></div></details>
+<details class="aside-detail" id="skeleton-graph"><summary>骨架怎样压缩成图？</summary><div><svg viewBox="0 0 720 165" role="img" aria-label="Y形骨架先识别端点和分叉，再把连续路径压缩为图的三条边" class="pipeline-diagram"><path d="M110 135L110 80L55 25M110 80L170 25" fill="none" stroke="#bfd7c9" stroke-width="13"/><path d="M110 135L110 80L55 25M110 80L170 25" fill="none" stroke="#176e59" stroke-width="3" stroke-dasharray="3 4"/><text x="215" y="85" font-size="24" fill="#176e59">→</text><path d="M430 135L430 80L375 25M430 80L490 25" fill="none" stroke="#176e59" stroke-width="3"/><g fill="#176e59"><circle cx="430" cy="135" r="7"/><circle cx="430" cy="80" r="9"/><circle cx="375" cy="25" r="7"/><circle cx="490" cy="25" r="7"/></g><g font-size="15" fill="#19312e"><text x="18" y="160">骨架：连续相邻的体素</text><text x="270" y="160">图：4 个节点 + 3 条分支</text><text x="520" y="70">端点 / 分叉簇 → 节点</text><text x="520" y="100">中间有序路径 → 边</text></g></svg><p>先数骨架体素的邻居：0/1 为孤立点或端点，2 为可追踪路径点，超过 2 为潜在分叉。相邻分叉体素先聚类为节点，再沿度数为 2 的路径追踪到下一个节点。没有端点的闭环用一个合成节点和一条自环表示。</p><p>每条边保存起止节点 ID、体素序列、RAS 毫米坐标和长度。当前图没有指定根，不自动推断父子关系或血流方向。</p></div></details>
+<!-- CODE_SKELETON -->
+<a class="return" href="#learn-geometry">下一章：拿到分支图后，具体测什么 →</a>
+</section>
+
+<section class="section" id="learn-geometry" data-watch>
+<div class="kicker">05 / 几何测量</div><h2>以分支为单位，测走向、粗细与连接角度。</h2>
+<p><a href="#learn-centerline">第四章的图</a>回答“哪些路径相连”；这一章把每条路径、对应 Mask 和距离场变成几何报告。<strong>中心线负责走向，Mask 负责截面，EDT 提供局部粗细近似。</strong></p>
+<ol class="pipeline-flow" aria-label="几何测量流程图"><li><b>输入 Graph + Mask + EDT</b><span>分支路径转换到 RAS 毫米坐标</span></li><li><b>逐分支计算长度、粗细与弯曲</b><span>在分支中点采样截面，在分叉附近拟合方向</span></li><li><b>逐节点计算相邻分支夹角</b><span>使用从节点向外的局部方向</span></li><li><b>输出分支、截面、夹角和节点 CSV</b><span>有参考数据时，再进入第六章评价</span></li></ol>
+<div class="table-scroll"><table><thead><tr><th>测什么</th><th>怎么得到</th><th>单位 / 输出</th></tr></thead><tbody><tr><td>分支长度</td><td>累加有序中心线点之间的物理距离</td><td>mm · branches.csv</td></tr><tr><td>平均 EDT 直径</td><td>在中心线路径上取两倍 EDT，再求平均</td><td>mm · branches.csv</td></tr><tr><td>中点截面积 / 等效直径</td><td>沿局部切线的垂直平面采样 Mask，统计包含中心的截面区域</td><td>mm² / mm · sections.csv</td></tr><tr><td>分支夹角</td><td>在分叉节点附近拟合两条分支的向外方向，求夹角</td><td>度 · branch_angles.csv</td></tr><tr><td>平均曲率</td><td>平滑路径后，用相邻三点的外接圆估计弯曲程度并统计</td><td>1/mm · sections.csv</td></tr></tbody></table></div>
+<details class="aside-detail"><summary>展开测量公式与取点约定</summary><div><div class="formula">长度：L = Σ ||pᵢ₊₁ − pᵢ||，p 为世界坐标
+平均 EDT 直径：d̄ = meanᵢ(2D(pᵢ))
+截面积：A = N前景采样点 × 平面采样间距²
+等效直径：d_eq = 2√(A/π)
+夹角：θ = arccos[(u·v)/(||u||·||v||)]
+三点曲率：κ = 4A△/(abc)，A△ 为三点构成的三角形面积，a、b、c 为边长</div><p>截面位置使用中心线序列的中间采样点，不是按弧长一半重采样；截面只保留包含中心点的平面 4 连通前景。方向或截面未定义时相应 CSV 字段留空，不写成 0。两种直径是不同定义的估计量。</p></div></details>
+<!-- CODE_GEOMETRY -->
+<a class="return" href="#learn-evaluate">下一章：怎样用实验检查分割、骨架和测量结果 →</a>
+</section>
+
+<section class="section" id="learn-evaluate" data-watch>
+<div class="kicker">06 / 实验与评价</div><h2>检查结果是否正确，并说明是在什么条件下得到的。</h2>
+<p>前五章生成了 Mask、骨架、图和几何数字；实验负责检查它们。先用有已知形状和尺寸的合成数据核对算法，再用真实影像与参考标注比较。<strong>“能运行”“分割重叠好”“中心线连接好”“测量准确”是不同问题，需要不同证据。</strong></p>
+<ol class="pipeline-flow" aria-label="实验评价流程图"><li><b>固定输入、参考标注、ROI 和参数</b><span>先说明测的是哪个病例、哪个区域</span></li><li><b>运行主流程，保存预测结果与运行记录</b><span>普通分析不读取参考标注</span></li><li><b>核对或显式对齐网格 → 独立计算指标</b><span>预测与参考必须使用同一物理网格，不默认假定数组位置已经对应</span></li><li><b>结合对照图、指标与合成真值解释结果</b><span>保存 metrics.json、几何 CSV 和实验范围</span></li></ol>
+<h3>实验指标有哪些？</h3>
+<div class="table-scroll"><table><thead><tr><th>指标 / 检查</th><th>回答什么</th><th>怎么看</th></tr></thead><tbody><tr><td>Dice</td><td>预测管腔与参考区域重叠多少？</td><td>越高越好，最大 1</td></tr><tr><td>HD95</td><td>预测与参考的边界相距多远？</td><td>mm，越低越好</td></tr><tr><td>clDice</td><td>预测骨架与参考管腔、参考骨架与预测管腔覆盖得怎样？</td><td>越高越好，关注管状结构覆盖</td></tr><tr><td>对称平均中心线距离</td><td>两份骨架的空间位置靠得多近？</td><td>mm，越低越好</td></tr><tr><td>连通域 / 分支检查</td><td>是否断开、多出分支或出现错误连接？</td><td>结合参考及图像检查；连通域数不等于分支数</td></tr><tr><td>几何真值对照</td><td>长度、直径、截面是否符合已知形状？</td><td>在合成数据中与已知尺寸比较</td></tr><tr><td>性能与一致性</td><td>耗时多少，线程改变后结果是否一致？</td><td>记录体积、尺度、线程数与环境；大体积内存基准仍待完成</td></tr></tbody></table></div>
+<details class="aside-detail"><summary>展开评价公式和项目的具体定义</summary><div><div class="formula">Dice = 2|P∩R| / (|P|+|R|)
+HD95 = max[Q95(d(∂P→∂R)), Q95(d(∂R→∂P))]
+Tprecision = |Skeleton(P)∩R| / |Skeleton(P)|
+Tsensitivity = |Skeleton(R)∩P| / |Skeleton(R)|
+clDice = 2·Tprecision·Tsensitivity / (Tprecision+Tsensitivity)
+平均中心线距离 = [Σ d(Skeleton(P)→Skeleton(R))
+                    + Σ d(Skeleton(R)→Skeleton(P))]
+                  / [|Skeleton(P)|+|Skeleton(R)|]</div><p>P 为预测，R 为参考。HD95 使用两个方向最近边界距离的最近秩 95% 分位之最大值；中心线距离把两个方向的逐点距离合并后求平均，按两份骨架的点数加权。所有距离使用毫米。空集合的特殊约定见<a href="#ref-math">算法约定</a>，不能将未定义字段当成零。</p></div></details>
+<details class="aside-detail"><summary>当前有哪些实验记录？</summary><div><ul><li><strong>代码检查：</strong>完整配置 27 个 CTest 项通过，检查数值、几何、拓扑、格式及 CLI/桌面行为。</li><li><strong>合成数据：</strong>直圆柱分割 Dice 约 0.957；也有弯曲、Y 型和带噪斜管场景，可用已知形状核对分支和几何量。</li><li><strong>真实开发样例：</strong>ImageCAS 病例 1 配 ImageCAS-X v2 标注，局部 ROI Dice 0.816186、clDice 0.875168、HD95 2.73998 mm。ROI 与种子由参考辅助，该病例已参与开发，不是独立测试，也不是全图自动冠脉结果。</li></ul><!-- CASE_FIGURE --><p>80×80×48 两尺度增强的一次记录：1 线程约 0.426 秒，4 线程约 0.230 秒，输出逐体素一致；这是该环境的小体积记录。</p></div></details>
+<!-- CODE_EVALUATE -->
+<p><a href="#ref-data">数据与复现步骤 →</a>　<a href="#ref-checks">完整验证记录 →</a>　<a href="#learn-qt">进入独立的 Qt 工作台页面 →</a></p>
+</section>

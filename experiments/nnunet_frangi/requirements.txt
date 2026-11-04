@@ -1,0 +1,4 @@
+# Install a CUDA-enabled PyTorch matching the target GPU FIRST; see README.md.
+nnunetv2==2.6.2
+nibabel>=5.3,<6
+scikit-image>=0.25,<0.26

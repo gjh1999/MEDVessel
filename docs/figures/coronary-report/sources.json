@@ -1,0 +1,75 @@
+{
+  "checked_date": "2026-11-04",
+  "sources": [
+    {
+      "title": "VMTK 原论文",
+      "url": "https://doi.org/10.1007/s11517-008-0420-1",
+      "note": "Antiga 等，2008。图像分割、中心线与几何建模框架。"
+    },
+    {
+      "title": "VMTK 冠脉官方教程",
+      "url": "https://github.com/vmtk/SlicerExtension-VMTK/blob/master/Docs/CoronaryArteryCenterlineExtraction.md",
+      "note": "已核对流程与 Accuracy of this workflow 段。OV、OF、OT、AI 属于单支中心线评价。"
+    },
+    {
+      "title": "VMTK 分割源码",
+      "url": "https://github.com/vmtk/SlicerExtension-VMTK/blob/master/LevelSetSegmentation/LevelSetSegmentation.py",
+      "note": "已核对界面与逻辑入口；本轮未构建外部工程。"
+    },
+    {
+      "title": "CATE 作者仓库",
+      "url": "https://github.com/mife-git/SlicerCATE",
+      "note": "README 将仓库映射到 MeMeA 2024 论文，给出三个应用模块；IEEE 全文页面受验证限制，未确认论文分割 Dice。"
+    },
+    {
+      "title": "Frangi 原论文",
+      "url": "https://doi.org/10.1007/BFb0056195",
+      "note": "MICCAI 1998，管状结构增强；不是某个数据集固定准确率的保证。"
+    },
+    {
+      "title": "ThinVesselSegmentation",
+      "url": "https://github.com/yzhong52/ThinVesselSegmentation",
+      "note": "README 核对 Vesselness / NMS / ModelFitting；没有从中找到可对应当前任务的 Dice。"
+    },
+    {
+      "title": "RORPO 官方项目",
+      "url": "https://path-openings.github.io/RORPO/",
+      "note": "确认 ECCV 2014 对应实现与各向同性要求；HAL 全文受访问保护，不填未核验数字。"
+    },
+    {
+      "title": "RORPO GitHub",
+      "url": "https://github.com/path-openings/RORPO",
+      "note": "公开增强组件的目录、接口与约束；未在本机运行。"
+    },
+    {
+      "title": "VCO 作者仓库",
+      "url": "https://github.com/kmu-ee-ailab/vco_v1.0_matlab",
+      "note": "README 经 GitHub API 核对；本地核对副本位于 build/research-sources/vco-readme.md。"
+    },
+    {
+      "title": "VCO 论文全文",
+      "url": "https://arxiv.org/pdf/2207.13837",
+      "note": "核对第 5～6 页实验与表 1：599 对帧、给定真实源中心线、2 像素匹配容差。"
+    },
+    {
+      "title": "统计区域生长论文（补充读物）",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5107877/",
+      "note": "Tian 等，2016；未核实论文配套 GitHub，不列为可运行代码推荐。"
+    },
+    {
+      "title": "ImageCAS-X 官方基准",
+      "url": "https://kitbransby.github.io/ImageCAS-X/",
+      "note": "核对表 1 的 nnU-Net、CAS-Net 与 TotalSegmentator 结果；不与本地 ROI 分数直接排名。"
+    },
+    {
+      "title": "ImageCAS-X 实验代码",
+      "url": "https://github.com/kitbransby/ImageCAS-X",
+      "note": "核对统一配置、评估入口和 Included Methods；子模型为基准实现集合。"
+    },
+    {
+      "title": "nnU-Net 论文与官方实现",
+      "url": "https://www.nature.com/articles/s41592-020-01008-z",
+      "note": "Nature Methods 2021；官方代码见 https://github.com/MIC-DKFZ/nnUNet。"
+    }
+  ]
+}
