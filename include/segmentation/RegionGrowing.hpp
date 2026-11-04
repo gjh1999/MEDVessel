@@ -17,20 +17,29 @@ inline void validateRegionOptions(const RegionGrowingOptions& o) {
        std::isnan(o.minIntensity)||std::isnan(o.maxIntensity)||o.minIntensity>o.maxIntensity||
        (o.connectivity!=6&&o.connectivity!=26)) throw std::invalid_argument("Invalid region-growing options");
 }
-inline Volume3D<std::uint8_t> seededRegionGrowing3D(const Volume3D<float>& vesselness,
-    const Volume3D<float>& source,const std::vector<VoxelIndex>& seeds,
-    const RegionGrowingOptions& options={}) {
-    validateRegionOptions(options);
+inline void validateRegionGrids(const Volume3D<float>& vesselness,const Volume3D<float>& source,
+    const Volume3D<std::uint8_t>* domain=nullptr) {
     if(vesselness.dimensions()!=source.dimensions() ||
        vesselness.geometry().spacing!=source.geometry().spacing ||
        vesselness.geometry().origin!=source.geometry().origin ||
        vesselness.geometry().direction!=source.geometry().direction)
         throw std::invalid_argument("Source and vesselness grids differ");
+    if(domain&&(domain->dimensions()!=source.dimensions()||
+       domain->geometry().spacing!=source.geometry().spacing||
+       domain->geometry().origin!=source.geometry().origin||
+       domain->geometry().direction!=source.geometry().direction))
+        throw std::invalid_argument("Region-growing domain and source grids differ");
+}
+inline Volume3D<std::uint8_t> seededRegionGrowing3D(const Volume3D<float>& vesselness,
+    const Volume3D<float>& source,const std::vector<VoxelIndex>& seeds,
+    const RegionGrowingOptions& options={},const Volume3D<std::uint8_t>* domain=nullptr) {
+    validateRegionOptions(options);
+    validateRegionGrids(vesselness,source,domain);
     const auto d=source.dimensions();
     Volume3D<std::uint8_t> mask(d[0],d[1],d[2],source.geometry());
     auto eligible=[&](VoxelIndex p) {
         float v=vesselness.at(p[0],p[1],p[2]),s=source.at(p[0],p[1],p[2]);
-        return std::isfinite(v)&&std::isfinite(s)&&v>=options.lowThreshold&&
+        return (!domain||domain->at(p[0],p[1],p[2]))&&std::isfinite(v)&&std::isfinite(s)&&v>=options.lowThreshold&&
             s>=options.minIntensity&&s<=options.maxIntensity;
     };
     std::queue<VoxelIndex> pending;

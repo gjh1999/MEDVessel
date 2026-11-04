@@ -12,6 +12,7 @@ struct RunOptions {
     std::vector<VoxelIndex> seeds;
     bool nmsSeeds=false;
     double nmsStepMm=1,pruneLengthMm=0;
+    double growthBandMm=0,seedCoreRatio=.35;
     std::size_t minComponentVoxels=0;
     std::optional<std::array<std::size_t,6>> roi;
 };
@@ -58,6 +59,8 @@ inline RunOptions parseRunOptions(const std::vector<std::string>& arguments) {
             else if(key=="--c") result.frangi.c=number;
             else if(key=="--nms-step") result.nmsStepMm=number;
             else if(key=="--prune-mm") result.pruneLengthMm=number;
+            else if(key=="--growth-band-mm") result.growthBandMm=number;
+            else if(key=="--seed-core-ratio") result.seedCoreRatio=number;
             else if(key=="--min-component") {
                 if(number<0||number!=std::floor(number)||number>=static_cast<double>(std::numeric_limits<std::size_t>::max()))
                     throw std::invalid_argument("Invalid component size");
@@ -75,6 +78,10 @@ inline RunOptions parseRunOptions(const std::vector<std::string>& arguments) {
     }
     validateRegionOptions(result.segmentation);
     if(result.nmsStepMm<=0||result.pruneLengthMm<0) throw std::invalid_argument("Invalid NMS or pruning distance");
+    if(result.growthBandMm<0||result.seedCoreRatio<0||result.seedCoreRatio>1)
+        throw std::invalid_argument("Invalid core growth band or seed ratio");
+    if(result.growthBandMm>0&&result.seeds.empty()&&!result.nmsSeeds)
+        throw std::invalid_argument("Core growth requires explicit seeds or --nms-seeds");
     for(double p:{result.frangi.alpha,result.frangi.beta,result.frangi.c})
         if(!std::isfinite(p)||p<=0) throw std::invalid_argument("Frangi parameters must be positive");
     return result;

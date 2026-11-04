@@ -8,6 +8,7 @@
 #include "core/Crop.hpp"
 #include "filters/Frangi.hpp"
 #include "segmentation/RegionGrowing.hpp"
+#include "segmentation/SeededCoreGrowth.hpp"
 #include "skeleton/DistanceTransform.hpp"
 #include "skeleton/Thinning.hpp"
 #include "skeleton/CenterlineGraph.hpp"
@@ -29,6 +30,7 @@ int main(int argc,char** argv) {
                  <<"         --low n --high n --min-intensity n --max-intensity n --connectivity 6|26\n"
                  <<"         --roi x,y,z,width,height,depth --seed x,y,z (indices AFTER ROI)\n";
         std::cerr<<"         --nms-seeds --nms-step mm --min-component voxels --prune-mm mm\n";
+        std::cerr<<"         --growth-band-mm mm (0 disables) --seed-core-ratio ratio (0 uses high)\n";
         return 2;
     }
     try {
@@ -53,7 +55,7 @@ int main(int argc,char** argv) {
         std::filesystem::path output(argv[2]);std::filesystem::create_directories(output);
         if(std::filesystem::is_regular_file(argv[1])) {
             const auto inputPath=std::filesystem::weakly_canonical(argv[1]);
-            for(const char* name:{"vesselness.nii.gz","best_scale_mm.nii.gz","mask.nii.gz","skeleton.nii.gz", "radius_field_mm.nii.gz",
+            for(const char* name:{"vesselness.nii.gz","best_scale_mm.nii.gz","mask.nii.gz","core.nii.gz","skeleton.nii.gz", "radius_field_mm.nii.gz",
                                   "branches.csv","centerline.csv","sections.csv","branch_angles.csv","nodes.csv","preview.svg","run.json"})
                 if(inputPath==std::filesystem::weakly_canonical(output/name))
                     throw std::invalid_argument("Output directory would overwrite input image");
@@ -69,7 +71,11 @@ int main(int argc,char** argv) {
                 if(nms.at(x,y,z)>0&&nms.at(x,y,z)>=run.segmentation.highThreshold) run.seeds.push_back({x,y,z});
         }
         stage("segment");
-        auto mask=explicitSeedMode?medvessel::seededRegionGrowing3D(enhanced.vesselness,source,run.seeds,run.segmentation)
+        std::optional<medvessel::SeededCoreGrowthResult> coreGrowth;
+        if(run.growthBandMm>0) coreGrowth=medvessel::seededCoreGrowth3D(
+            enhanced.vesselness,source,run.seeds,run.segmentation,run.growthBandMm,run.seedCoreRatio);
+        auto mask=coreGrowth?std::move(coreGrowth->mask):explicitSeedMode?
+            medvessel::seededRegionGrowing3D(enhanced.vesselness,source,run.seeds,run.segmentation)
             :medvessel::hysteresisThreshold3D(enhanced.vesselness,source,run.segmentation);
         if(run.minComponentVoxels) mask=medvessel::removeSmallComponents(mask,run.minComponentVoxels,run.segmentation.connectivity);
         stage("distance");
@@ -90,6 +96,11 @@ int main(int argc,char** argv) {
         medvessel::writeNifti(enhanced.vesselness,(output/"vesselness.nii.gz").string());
         medvessel::writeNifti(enhanced.bestScaleMm,(output/"best_scale_mm.nii.gz").string());
         medvessel::writeNifti(floatMask,(output/"mask.nii.gz").string());
+        if(coreGrowth) {
+            for(std::size_t z=0;z<d[2];++z) for(std::size_t y=0;y<d[1];++y) for(std::size_t x=0;x<d[0];++x)
+                floatMask.at(x,y,z)=coreGrowth->core.at(x,y,z);
+            medvessel::writeNifti(floatMask,(output/"core.nii.gz").string());
+        }
         for(std::size_t z=0;z<d[2];++z) for(std::size_t y=0;y<d[1];++y) for(std::size_t x=0;x<d[0];++x)
             floatMask.at(x,y,z)=skeleton.at(x,y,z);
         medvessel::writeNifti(floatMask,(output/"skeleton.nii.gz").string());
@@ -129,6 +140,10 @@ int main(int argc,char** argv) {
         metadata<<"],\n  \"alpha\": "<<run.frangi.alpha<<", \"beta\": "<<run.frangi.beta<<", \"c\": "<<run.frangi.c<<",\n"
                 <<"  \"bright_vessels\": "<<(run.frangi.brightVessels?"true":"false")<<",\n"
                 <<"  \"low_threshold\": "<<run.segmentation.lowThreshold<<", \"high_threshold\": "<<run.segmentation.highThreshold<<",\n"
+                <<"  \"growth_band_mm\": "<<run.growthBandMm<<", \"seed_core_ratio\": "<<run.seedCoreRatio<<",\n"
+                <<"  \"effective_core_threshold\": ";
+        if(coreGrowth) metadata<<coreGrowth->coreThreshold;else metadata<<"null";
+        metadata<<",\n"
                 <<"  \"min_intensity\": ";
         if(std::isfinite(run.segmentation.minIntensity)) metadata<<run.segmentation.minIntensity;else metadata<<"null";
         metadata<<", \"max_intensity\": ";

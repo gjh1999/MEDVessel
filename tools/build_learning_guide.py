@@ -15,6 +15,7 @@ DOCS = [
     ("reference_data.md", "ref-data", "数据与实验复现", "数据来源、版本、校验、脚本和完整实验记录"),
     ("validation.md", "ref-checks", "验证证据", "测试覆盖、实验结果、失败案例和验收条件"),
     ("progress.md", "ref-progress", "进度与剩余工作", "与原始开发计划逐阶段对照"),
+    ("multicase.md", "ref-multicase", "多病例固定参数测试", "新增十例的逐例指标、对照图与评估范围"),
 ]
 LINKS = {name: "#" + anchor for name, anchor, *_ in DOCS}
 LINKS["README.md"] = "#learn-start"
@@ -47,6 +48,7 @@ def markdown(text, anchor):
     result = []
     index = 0
     heading = 0
+    qt_subheading = 0
     while index < len(lines):
         line = lines[index]
         if not line.strip():
@@ -77,9 +79,14 @@ def markdown(text, anchor):
             index += 1
             if len(match[1]) == 1:
                 continue  # The surrounding reference accordion supplies its title.
-            heading += 1
+            if anchor == "qt" and len(match[1]) > 2:
+                qt_subheading += 1
+                heading_id = f"qt-sub{qt_subheading}"
+            else:
+                heading += 1
+                heading_id = f"{anchor}-h{heading}"
             level = min(len(match[1]) + 1, 6)
-            result.append(f'<h{level} id="{anchor}-h{heading}">' + inline(match[2]) + f"</h{level}>")
+            result.append(f'<h{level} id="{heading_id}">' + inline(match[2]) + f"</h{level}>")
             continue
         if line.startswith("|"):
             rows = []
@@ -164,9 +171,9 @@ def main():
             reference.append(entry)
     template = template.replace("<!-- REFERENCE_CONTENT -->", "\n".join(reference))
     lesson_source = (ROOT / "docs/qt_development.md").read_text(encoding="utf-8")
-    lesson = fold_sections(markdown(lesson_source, "qt"))
+    lesson = markdown(lesson_source, "qt")
     lesson_headings = re.findall(r'^## (.+)$', lesson_source, re.MULTILINE)
-    toc = '<details class="aside-detail"><summary>查看 Qt 章节目录 · 点击条目自动展开</summary><div class="grid">'
+    toc = '<details class="aside-detail"><summary>Qt 实现路线 · 按顺序阅读</summary><div class="grid">'
     toc += ''.join(f'<a href="#qt-h{i}">' + escape(title) + '</a>' for i, title in enumerate(lesson_headings, 1))
     toc += '</div></details>'
     template = template.replace("<!-- QT_LEARNING_CONTENT -->", toc + lesson)

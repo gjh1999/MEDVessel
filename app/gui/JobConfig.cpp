@@ -13,6 +13,8 @@ QStringList JobConfig::arguments(const QString& output) const {
         "--low",QString::number(low,'g',16),"--high",QString::number(high,'g',16),
         "--connectivity",QString::number(connectivity),"--min-component",QString::number(minComponent),
         "--prune-mm",QString::number(prune,'g',16),"--nms-step",QString::number(nmsStep,'g',16)};
+    args<<"--growth-band-mm"<<QString::number(growthBandMm,'g',16)
+        <<"--seed-core-ratio"<<QString::number(seedCoreRatio,'g',16);
     std::optional<std::array<std::size_t,6>> crop;
     if(!roi.trimmed().isEmpty()) {
         crop=medvessel::parseIndices<6>(roi.trimmed().toStdString());
@@ -45,6 +47,7 @@ QJsonObject JobConfig::toJson() const {
         {"scales",scales},{"roi",roi},{"seeds",seeds},{"seeds_in_source",seedsInSource},
         {"min_intensity",minIntensity},{"max_intensity",maxIntensity},{"alpha",alpha},{"beta",beta},
         {"c",c},{"low",low},{"high",high},{"nms_step",nmsStep},{"prune",prune},
+        {"growth_band_mm",growthBandMm},{"seed_core_ratio",seedCoreRatio},
         {"connectivity",connectivity},{"min_component",minComponent},{"threads",threads},{"dark",dark},{"nms",nms}};
 }
 JobConfig JobConfig::fromJson(const QJsonObject& o) {
@@ -57,6 +60,7 @@ JobConfig JobConfig::fromJson(const QJsonObject& o) {
     c.minIntensity=o["min_intensity"].toString();c.maxIntensity=o["max_intensity"].toString();
     c.alpha=o["alpha"].toDouble(.5);c.beta=o["beta"].toDouble(.5);c.c=o["c"].toDouble(100);
     c.low=o["low"].toDouble(.1);c.high=o["high"].toDouble(.3);c.nmsStep=o["nms_step"].toDouble(1);
+    c.growthBandMm=o["growth_band_mm"].toDouble(0);c.seedCoreRatio=o["seed_core_ratio"].toDouble(.35);
     c.prune=o["prune"].toDouble();c.connectivity=o["connectivity"].toInt(26);
     c.minComponent=o["min_component"].toInt();c.threads=o["threads"].toInt(4);
     c.dark=o["dark"].toBool();c.nms=o["nms"].toBool();c.arguments("validation-only");return c;

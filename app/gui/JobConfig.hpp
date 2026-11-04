@@ -7,6 +7,7 @@ struct JobConfig {
     QString input, outputRoot, executable;
     QString scales="0.5,1,2", roi, seeds, minIntensity, maxIntensity;
     double alpha=.5, beta=.5, c=100, low=.1, high=.3, nmsStep=1, prune=0;
+    double growthBandMm=0,seedCoreRatio=.35;
     int connectivity=26, minComponent=0, threads=4;
     bool dark=false, nms=false, seedsInSource=true;
     QStringList arguments(const QString& output) const;

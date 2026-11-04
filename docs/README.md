@@ -1,5 +1,7 @@
 # MEDVessel 文档入口
 
+**专题报告：[传统冠脉分割开源路线与泛化诊断](traditional_coronary_report.html)。** 包含论文和 GitHub 对应关系、适用模态、指标边界、11 例结果的独立传播回放，以及深度学习对照建议。报告为离线单文件，可切换病例与筛选方法类别。
+
 **推荐入口：[项目学习网页](medvessel_learning_guide.html)。** 单文件手册分为同级的「总体概览」「深入学习」「Qt 桌面开发」三页。算法页按影像、增强、分割、骨架与图、测量、实验六章阅读；代码放在对应章节，细节默认折叠。原始文档保留为维护来源。
 
 维护网页：修改源文档或 `tools/learning_guide.template.html` 后，在仓库根目录运行 `python tools/build_learning_guide.py`。生成时会自动嵌入本机已有的真实样例对照图。
@@ -27,3 +29,9 @@ Gaussian → Hessian → Frangi 的折叠课程维护在 `tools/enhancement_less
 
 建议先按构建文档运行合成示例，再按数据文档复现冠脉样例，最后结合输出格式阅读报告。
 所有文档中的测试数与实验数值都是当前记录，不会在构建时自动更新。
+# 最新实验报告
+
+- [CTA + Frangi 双通道 nnU-Net](nnunet_hybrid.html)：模块结构、数据准备、无训练验证、换机训练命令与数据量建议。
+
+- [主流评价指标、统一重算结果与工业落地](evaluation_and_industry.html)
+- [核心补边优化与逐病例图像](segmentation_optimization.html)

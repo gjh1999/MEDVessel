@@ -11,6 +11,8 @@
 
 完整文档从 [文档入口](docs/README.md) 开始：
 
+新增专题：[传统冠脉分割开源路线与泛化诊断](docs/traditional_coronary_report.html)，整理论文与 GitHub，并基于新增十例的精确率、召回率及门限回放解释失败原因。
+
 | 需要做什么 | 文档 |
 | --- | --- |
 | 构建与准备依赖 | [Windows 构建](docs/build_windows.md) |
@@ -68,7 +70,14 @@ CLI 可选参数：`--scales 0.5,1,2`、`--alpha 0.5`、`--beta 0.5`、`--c 100`
 本机 Windows 构建命令见 [本机构建说明](docs/build_windows.md)。
 
 文档参考仓库的数据已下载，来源与 VMTK 样例实验见 [参考数据记录](docs/reference_data.md)。
-也已取得并运行实际 ImageCAS 冠脉 CTA 与 ImageCAS-X v2 配对标注；局部参考辅助开发区域 Dice 约 0.816，尚非独立测试结果。
+已下载并运行 11 例 ImageCAS CTA 与 ImageCAS-X v2 配对标注（共 2766 张 Z 切片）。固定参数的新增 10 例参考辅助局部 ROI 平均 Dice 约 0.5100；原开发病例约 0.8162，不代表总体性能。逐例结果、图片与复现见 [多病例记录](docs/multicase.md)。
 本机可执行 `./tools/run_imagecas_sample.ps1 -PlotPython C:/Users/1/anaconda3/python.exe` 复现并生成对照图。
 `medvessel_evaluate` 可计算 Dice、HD95、clDice、中心线距离和连通分量数。
 `medvessel_export` 导出 float32 原始数据及几何 JSON，供独立绘图工具使用。
+# 最新实验与评价
+
+- [CTA + Frangi 双通道 nnU-Net 实验文档](docs/nnunet_hybrid.html)：独立目录 `experiments/nnunet_frangi`，本阶段只验证数据与前向，不训练；含 RTX 5080 换机步骤和病例规模建议。
+
+- [3D 血管主流指标、统一重算与工业落地](docs/evaluation_and_industry.html)：主指标 Dice / HD95，补充 ASSD / clDice。
+- [核心补边优化及 11 例图像对照](docs/segmentation_optimization.html)：新增 10 例开发 ROI 的平均 Dice 从 0.5100 提高到 0.7307；参数使用这些病例探索，尚非独立测试结论。
+- 统一评估入口：`tools/evaluate_standard.py`，汇总：`tools/report_standard_metrics.py`。旧 C++ 指标保留作历史记录，主表读取 `metrics_standard.json`。

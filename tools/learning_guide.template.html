@@ -45,7 +45,7 @@
 <div data-nav="overview"><strong>总体概览 / 约 5–8 分钟</strong>
 <a href="#overview-home">项目是什么</a><a href="#overview-flow">从输入到结果</a><a href="#overview-concepts">三个关键区别</a><a href="#overview-evidence">目前做到了什么</a><a href="#overview-code">实现与使用入口</a><a href="#overview-recap">一页回顾卡片</a></div>
 <div data-nav="deep" hidden><strong>深入学习 / 六章主线</strong><a href="#learn-start">怎么学这份文档</a><a href="#learn-volume">01 · 影像与物理坐标</a><a href="#learn-frangi">02 · 血管增强</a><a href="#learn-segment">03 · 血管分割</a><a href="#learn-centerline">04 · 骨架与图结构</a><a href="#learn-geometry">05 · 几何测量</a><a href="#learn-evaluate">06 · 实验与评价</a><a href="#reference-desk">完整查阅区</a><a href="#roadmap">阶段与参考项目</a></div>
-<div data-nav="qt" hidden><strong>Qt / 使用与实现</strong><a href="#qt-home">独立页面概览</a><a href="#learn-qt">总体关系与截图</a><a href="#qt-h1">窗口、参数与进程</a><a href="#qt-h5">跟随一次开始分析</a><a href="#qt-h17">三方向切片</a><a href="#qt-h18">窗宽窗位与叠加</a><a href="#qt-h19">鼠标选取</a><a href="#qt-h20">VTK 三维显示</a><a href="#qt-h21">三维到结果切片</a><a href="#qt-reference">操作与构建查阅</a></div>
+<div data-nav="qt" hidden><strong>Qt / 模块与实现路线</strong><a href="#qt-home">学习入口</a><a href="#learn-qt">总体关系与截图</a><a href="#qt-h1">总体结构与模块</a><a href="#qt-h2">入口与窗口骨架</a><a href="#qt-h3">参数模型</a><a href="#qt-h4">连接算法任务</a><a href="#qt-h5">日志与任务状态</a><a href="#qt-h6">结果展示</a><a href="#qt-h7">二维切片</a><a href="#qt-h8">鼠标与坐标</a><a href="#qt-h9">三维与定位</a><a href="#qt-h10">扩展与交付</a><a href="#qt-reference">操作与构建查阅</a></div>
 <details class="outline-mobile"><summary>展开本页目录</summary><div id="mobile-links"></div></details>
 <p class="side-note">第一次阅读：先看概览，再按章节学习。<br><br>熟悉以后：只保留在“总体概览”即可，不必展开参数表和技术附录。<br><br>状态记录：2026-11-03<br>细节默认折叠，内容与图片均已内嵌，可离线阅读。</p>
 </aside>
@@ -197,10 +197,10 @@
 <div class="footer">MEDVessel · 项目学习与复现手册 · 记录日期 2026-11-03<br>本页可独立离线阅读。更新源文档后，运行 tools/build_learning_guide.py 重新生成。</div>
 </div>
 <div class="panel" id="panel-qt" role="tabpanel" aria-labelledby="tab-qt" data-panel="qt" hidden>
-<section class="hero" id="qt-home" data-watch><div class="eyebrow">PART III / DESKTOP WORKBENCH</div><h1>Qt 工作台：从使用到实现。</h1><p>这一页单独学习桌面开发：先看界面如何调用算法，再按需展开参数、异步任务、切片和三维联动的代码。算法原理保留在“深入学习”页。</p><a class="hero-link" href="#learn-start">回到算法原理 →</a></section>
+<section class="hero" id="qt-home" data-watch><div class="eyebrow">PART III / DESKTOP WORKBENCH</div><h1>Qt 工作台：从使用到实现。</h1><p>这一页单独学习桌面开发：先理解模块职责，再按窗口、参数、任务、结果、切片和三维的顺序逐步实现。算法原理保留在“深入学习”页。</p><a class="hero-link" href="#learn-start">回到算法原理 →</a></section>
 <section class="section" id="learn-qt" data-watch>
 <div class="kicker">从交互到算法</div><h2>Qt 工作台是怎么写出来的？</h2>
-<p class="chapter-question">先理解三个类怎样协作，再跟随一次按钮点击读代码。前四节建立画面，中间追踪运行、日志与结果，最后动手做小练习。你不需要先学完 Qt 的全部 API。</p>
+<p class="chapter-question">从总体关系图落实到模块文件，再按可运行的增量逐步实现。每一步说明先写什么、模块如何连接，以及完成后能观察到什么。正文连续展开，按开发顺序阅读。</p>
 <div class="grid"><div class="card"><h3>MainWindow · 操作台</h3><p>控件、布局与信号连接；从表单取值，展示投影与报表。</p></div><div class="card"><h3>JobConfig · 参数表</h3><p>保存输入值，转换 ROI 种子，校验并生成 CLI 参数数组。</p></div><div class="card"><h3>AnalysisJob · 任务管理员</h3><p>异步控制算法进程，解析日志，通知阶段并确认最终状态。</p></div></div>
 <!-- QT_FIGURE -->
 <!-- QT_LEARNING_CONTENT -->
