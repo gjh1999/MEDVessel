@@ -1,0 +1,85 @@
+{
+  "checked_utc": "2026-11-04T05:19:58.683835+00:00",
+  "scope": "Development ROI data/geometry/preprocessing and untrained network forward verification only",
+  "prepared_cases": 11,
+  "input_channels": 2,
+  "official_nnunet_integrity_check": {
+    "dataset": "Dataset512_CoronaryFrangiSmokeROI",
+    "case_count": 11,
+    "training_started": false
+  },
+  "official_preprocessed_cases": 11,
+  "normalization": [
+    "CTNormalization",
+    "NoNormalization"
+  ],
+  "internal_split": {
+    "train": 8,
+    "validation": 3,
+    "independent_test": 0
+  },
+  "enhancement_real_roi_voxelwise_identical_to_existing_cpp": true,
+  "pipeline_unit_and_integration_tests_passed": 7,
+  "full_volume_preparation_checked_on_synthetic_data": true,
+  "full_volume_real_data_batch_prepared": false,
+  "environment": {
+    "python": "3.13.5 | packaged by Anaconda, Inc. | (main, Jun 12 2025, 16:37:03) [MSC v.1929 64 bit (AMD64)]",
+    "packages": {
+      "nnunetv2": "2.6.2",
+      "dynamic-network-architectures": "0.4.4",
+      "nibabel": "5.4.2",
+      "numpy": "2.2.6",
+      "scipy": "1.15.3",
+      "scikit-image": "0.25.0"
+    },
+    "torch": "2.6.0+cu124",
+    "torch_cuda": "12.4",
+    "cuda_available": true,
+    "training_started": false,
+    "gpu": "NVIDIA GeForce RTX 3050 4GB Laptop GPU",
+    "vram_gib": 3.99957275390625,
+    "cuda_kernel_ok": true
+  },
+  "forward": {
+    "purpose": "Untrained architecture forward smoke check only; no segmentation accuracy",
+    "dataset": "Dataset512_CoronaryFrangiSmokeROI",
+    "device": "cuda",
+    "input_shape": [
+      1,
+      2,
+      32,
+      32,
+      32
+    ],
+    "input_case": "imagecas_1",
+    "input_kind": "center patch of real officially preprocessed dual-channel CTA",
+    "output_shape": [
+      1,
+      2,
+      32,
+      32,
+      32
+    ],
+    "planned_training_patch": [
+      64,
+      112,
+      112
+    ],
+    "parameters": 16548456,
+    "seconds": 0.8331085999961942,
+    "finite": true,
+    "training_started": false,
+    "optimizer_created": false,
+    "weights_saved": false,
+    "peak_allocated_vram_mib": 94.8603515625
+  },
+  "training_started": false,
+  "checkpoint_count": 0,
+  "deep_learning_segmentation_metrics": null,
+  "not_yet_verified": [
+    "5080 installation and execution",
+    "training/backpropagation",
+    "real full-volume preparation and inference",
+    "held-out segmentation quality"
+  ]
+}

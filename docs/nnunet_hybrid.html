@@ -1,0 +1,188 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CTA + Frangi 双通道 nnU-Net 实验</title><style>body{margin:0;background:#f2f7f9;color:#193c49;font:16px/1.9 system-ui,"Microsoft YaHei"}main{max-width:1100px;margin:auto;padding:30px 22px 70px}h1{font-size:32px}h3{margin-top:48px;border-bottom:2px solid #c9e1e6;padding-bottom:12px}a{color:#087b86;overflow-wrap:anywhere}pre{background:#16313d;color:#e7f2f4;padding:20px;border-radius:10px;overflow:auto;font-size:13px}code{font-family:Consolas,monospace}p code,td code{overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;background:white;font-size:14px}td,th{border:1px solid #d5e4e9;padding:12px;text-align:left;min-width:100px}.table-scroll{overflow:auto}.flow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:24px;background:#def0ef;border-radius:12px}.flow span{background:white;padding:14px;border-radius:8px}.status{padding:16px 22px;background:#fff2cf;border-left:4px solid #c78a11}@media print{pre{white-space:pre-wrap}body{background:white}}</style><main><h1>CTA + Frangi 双通道 nnU-Net</h1><p class="status">当前阶段：数据与网络前向验证。没有启动训练，没有深度模型分割成绩。</p><div class="flow"><span>原始 CTA</span><b>→</b><span>通道 0：CT<br>通道 1：Frangi 响应</span><b>→</b><span>nnU-Net 3D<br>联合预处理与分割</span><b>→</b><span>Mask<br>评价 / Qt 显示</span></div><h3 id="nnunet-h1">1. 本次目标与当前边界</h3>
+<p>新增独立实验目录，复用现有 C++ Frangi，把原始 CTA 和连续血管增强图一起输入 nnU-Net v2 的 3D 网络。传统增强提供管状结构提示，最终分割由网络学习。当前仅准备数据、核对官方格式并进行随机初始化网络的前向检查，不启动训练，不产生深度模型 Dice 成绩。</p>
+<p>项目分两条数据路径：Dataset512_CoronaryFrangiSmokeROI 使用已经存在的参考辅助 ROI，只用于快速检查；Dataset511_CoronaryFrangi 使用完整 CTA 及其完整标注，用于后续训练。程序禁止在 512 小 ROI 上启动正式训练，避免把流程检查误当成全冠脉实验。</p>
+<p>现有 11 例都参与过传统方案开发。新建 8/3 内部训练/验证划分不能把它们变成全新独立测试集；正式评估还需新增未见病例。</p>
+<p>本机实测：11 例双通道小 ROI 通过官方完整性检查和官方 3D 预处理，确认归一化为 CTNormalization / NoNormalization；7 项新流程测试及 2 项相关 C++ 测试通过。按规划构建的官方网络在 RTX 3050 上，以真实预处理数据的 32³ 小块完成前向检查。没有创建优化器或 checkpoint；没有完整真实 CTA 批处理、没有训练效果结论。完整 CTA 准备路径已通过合成数据集成测试。</p>
+<h3 id="nnunet-h2">2. 总体结构与各模块职责</h3>
+<p>数据流是：原始 CTA → 两路输入（CTA、固定参数 Frangi）→ nnU-Net 联合重采样/归一化 → 3D 网络 → 血管概率 → 二值 mask → 原图几何空间 → 统一指标 / 现有 Qt 显示。</p>
+<div class="table-scroll"><table><thead><tr><th>模块</th><th>文件</th><th>职责</th></tr></thead><tbody>
+<tr><td>固定实验约定</td><td>config.json</td><td>通道、标签、毫米尺度及数据集 ID</td></tr>
+<tr><td>传统增强</td><td>enhance.cpp</td><td>只读图像，用已有 Frangi 生成连续响应；不接受标签或种子</td></tr>
+<tr><td>数据组织</td><td>prepare_dataset.py</td><td>几何检查、双通道 NIfTI、二值标签、固定划分、输入哈希</td></tr>
+<tr><td>官方流程入口</td><td>workflow.py</td><td>环境检查、完整性验证、规划与预处理、前向检查、显式训练入口</td></tr>
+<tr><td>新病例输入</td><td>prepare_inference.py</td><td>不读取标签，为新 CTA 生成相同的两个通道</td></tr>
+<tr><td>训练后推理</td><td>predict.py</td><td>加载真实 checkpoint，滑窗推理；没有权重就报错</td></tr>
+<tr><td>统一评价</td><td>evaluate_predictions.py</td><td>读取实际预测，计算 Dice、HD95、ASSD、clDice</td></tr>
+<tr><td>复现证据</td><td>validation_result.json</td><td>本机验证结果，由验证后生成；不含分割有效性结论</td></tr>
+<tr><td>验证与文档</td><td>test_pipeline.py / record_validation.py / build_docs.py</td><td>回归检查、记录证据、生成离线网页</td></tr>
+</tbody></table></div>
+<p>这里没有手写一个“小 U-Net”冒充 nnU-Net。使用官方 nnunetv2 包的规划、预处理和模型构建代码；新增部分负责第二通道与工程衔接。</p>
+<h3 id="nnunet-h3">3. 双通道究竟怎么结合</h3>
+<p>第一通道保存原始 HU 图，命名为 CT，由 nnU-Net 采用 CTNormalization；第二通道保存 [0,1] 连续 Frangi 响应，命名为 nonorm，采用 NoNormalization，避免把它再次当作 CT 值处理。两个图像必须同尺寸、同间距、同原点和方向，不静默重采样对齐。nnU-Net 后续才按同一规划处理两通道。</p>
+<p>第二通道不是二值 mask、不是损失权重，也不是硬性分割范围。网络仍能利用原始 CTA 恢复增强不明显的结构。真实冠脉标签只作为训练监督；增强阶段不读取它。推理时同样不需要标签或人工种子。</p>
+<p>固定 Frangi 参数为：亮血管，尺度 0.5 / 1 / 1.5 / 2 mm，alpha=0.5、beta=0.5、c=100。直接使用未归一化 HU 计算，因此 c 的意义与原图强度有关；不能先把 HU 改成 [0,1] 再沿用 c=100。训练、验证和推理必须使用同一增强算法与参数。</p>
+<p>增强先在原始采样网格计算，再把两个通道交给 nnU-Net 一起重采样。它与“先重采样再增强”不是完全等价的实验；本项目固定前者并记录配置，后续改变时重新生成所有通道。</p>
+<h3 id="nnunet-h4">4. nnU-Net 文件组织与划分</h3>
+<pre data-language="text"><code>work/
+  nnUNet_raw/
+    Dataset512_CoronaryFrangiSmokeROI/
+      dataset.json
+      preparation.json
+      splits_final.json
+      imagesTr/
+        imagecas_1_0000.nii.gz     # CTA
+        imagecas_1_0001.nii.gz     # 连续 Frangi
+      labelsTr/
+        imagecas_1.nii.gz          # 独立参考标注，0/1
+  nnUNet_preprocessed/
+  nnUNet_results/</code></pre>
+<p>dataset.json 的通道为 <code>{&quot;0&quot;:&quot;CT&quot;,&quot;1&quot;:&quot;nonorm&quot;}</code>，标签为 <code>{&quot;background&quot;:0,&quot;coronary&quot;:1}</code>。明确使用 NibabelIO，避免读写器自动选择差异。每个源病例只有一个 ID，两通道和对应标签不能分到不同集合。若同一患者存在多次扫描，必须进一步按患者分组，不能仅凭文件名保证患者独立。</p>
+<p>当前固定随机种子 20261104，11 例产生 8 例训练 / 3 例验证，存为一个自定义 split（fold 0），不是默认五折。已有参考辅助 ROI 只是方便验证格式；训练入口检查 provenance，只允许 full-volume 数据。</p>
+<p>不把标签生成的中心点、包围盒、传统分割结果或最优种子放入正式推理输入。准备失败会留下 PREPARATION_INCOMPLETE，流程拒绝使用不完整目录。重复准备时使用新的 work 目录，防止混合不同参数或残留病例。</p>
+<h3 id="nnunet-h5">5. 需要多少例 3D 图像</h3>
+<p>计数单位是独立患者的完整 3D CTA 及对应标注，不是二维切片。一个患者切出几百张图或几千个 patch，仍然只是一例患者。</p>
+<div class="table-scroll"><table><thead><tr><th>阶段</th><th>建议病例规模</th><th>能回答的问题</th></tr></thead><tbody>
+<tr><td>当前流程检查</td><td>已有 11 例足够</td><td>文件、通道、几何、规划及前向是否可运行</td></tr>
+<tr><td>初步训练与消融</td><td>约 30～50 例</td><td>能否学到血管，加入增强是否有初步帮助</td></tr>
+<tr><td>更可靠的项目对照</td><td>约 100～200 例</td><td>更稳定地比较单通道与双通道，观察失败类型</td></tr>
+<tr><td>跨医院/设备泛化</td><td>需覆盖不同来源并设外部测试集</td><td>不能靠单一病例总数保证；由分布覆盖和验证设计决定</td></tr>
+</tbody></table></div>
+<p>这些是本项目的规划建议，不是 nnU-Net 官方最低要求，也不保证准确率。已有 11 例技术上也能训练，但验证方差很大，不宜作为泛化证明。优先考虑标注一致性、远端定义、扫描协议和设备差异。</p>
+<p>例如累计 100 例时可以预先划分 70/15/15 为训练/验证/测试，测试病例全程不用于选参；15 例测试仍是初步证据。已有 11 例可保留在开发侧。数据许可和标注来源沿用原数据集说明，本次不自动扩充下载。</p>
+<h3 id="nnunet-h6">6. 一步步在当前电脑做验证（不训练）</h3>
+<p>以下命令均在 MEDVessel 根目录运行。当前本机使用子目录 .venv，通过 system-site-packages 复用 Anaconda 的 CUDA PyTorch，其余新增包只安装在子目录环境。换电脑不复制该 .venv，重新创建独立环境。</p>
+<pre data-language="powershell"><code># 开启独立增强工具（要求主工程已配置 NIfTI）
+./.venv/Scripts/cmake.exe -S . -B build/cmake -DMEDVESSEL_BUILD_NNUNET_TOOLS=ON
+./.venv/Scripts/cmake.exe --build build/cmake --target medvessel_enhance --parallel 4
+
+# 下面四步都不会启动训练
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py check
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/prepare_dataset.py --mode smoke-roi
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py verify --dataset 512
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py plan --dataset 512 --gpu-memory-gb 3
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py forward --dataset 512 --device cuda</code></pre>
+<p>plan 执行的是官方指纹提取、网络规划和 CPU 预处理，限制进程数为 1；它不会迭代训练。forward 仅用随机权重进行一个小尺寸前向，不创建优化器、不反向传播、不保存权重。它不是推理准确度测试，也不证明完整训练 patch 的显存占用。3 GB 规划仅用于 3050 本机检查，不要作为 5080 正式实验的规划。</p>
+<p>本次使用官方默认的 PlainConvUNet 规划器作为基础流程，非新的 ResEnc 预设；nnU-Net 官方已有更新的预设推荐，后续可以单独对照，不在本次格式验证中混入架构改动。验证脚本入口：<code>python experiments/nnunet_frangi/test_pipeline.py</code>；生成证据：<code>python experiments/nnunet_frangi/record_validation.py</code>；更新网页：<code>python experiments/nnunet_frangi/build_docs.py</code>。record_validation 依赖上述检查已经完成以及复算的 build/nnunet-frangi-enhancement-check.nii.gz。</p>
+<h3 id="nnunet-h7">7. 换到 RTX 5080 后的准备与启动</h3>
+<p>先复制源码与原始配对数据；不复制本机 .venv。建议 Python 3.11 或 3.12，重新创建环境。RTX 5080 属于 Blackwell，不能直接照搬本机 PyTorch 2.6 + CUDA 12.4；按 PyTorch 官方安装页选择支持目标卡的 CUDA 构建，并运行 check 实际执行 CUDA kernel，而不是只看 nvidia-smi。</p>
+<pre data-language="powershell"><code>py -3.12 -m venv experiments/nnunet_frangi/.venv
+# 按 https://pytorch.org/get-started/locally/ 在此环境安装匹配的 CUDA PyTorch / torchvision
+experiments/nnunet_frangi/.venv/Scripts/python.exe -m pip install -r experiments/nnunet_frangi/requirements.txt
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py check
+
+# 重新编译增强工具，或迁移已验证、依赖齐全的同平台二进制后用 --enhancer 指定
+# 使用完整 CTA；这里不采用旧的标注辅助 ROI
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/prepare_dataset.py --mode full-volume
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py verify --dataset 511
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py plan --dataset 511 --gpu-memory-gb 8
+
+# 只预览训练命令，不执行
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py train --dataset 511
+
+# 晚上明确开始时才执行这一条；本次没有执行
+experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py train --dataset 511 --execute-training</code></pre>
+<p>8 GB 是保守的 nnU-Net 基线规划目标，不代表 5080 的实际显存，也不是最优参数。正式对照先保持相同规划，实测显存后再考虑更大 patch。完整 CTA 的多尺度 Hessian 在 CPU 上生成，需要较多系统内存与磁盘，GPU 更快不会自动加速这段 C++ CPU 代码。先单例观察资源再批量，默认顺序处理，不大量开启进程。</p>
+<p>Windows 使用 eager 模式并限制数据增强进程为 2；环境不稳定时可以考虑 Linux / WSL2，但不要跨系统复用虚拟环境。预处理与网络规划也需要重新验证，不能只搬一个 exe 就认为训练环境一致。</p>
+<h3 id="nnunet-h8">8. 训练后推理与评价</h3>
+<pre data-language="powershell"><code>python experiments/nnunet_frangi/prepare_inference.py new_cta.nii.gz new_channels --case-id patient_new
+python experiments/nnunet_frangi/predict.py experiments/nnunet_frangi/work/nnUNet_results/Dataset511_CoronaryFrangi/nnUNetTrainer__nnUNetPlans__3d_fullres new_channels predictions
+python experiments/nnunet_frangi/evaluate_predictions.py predictions reference_masks metrics.json --case-list test_cases.json</code></pre>
+<p>上面的 python 必须是已安装对应环境的解释器。test_cases.json 为预先确定的病例 ID 字符串列表，参考目录内每个文件为同名 0/1 NIfTI。缺失预测会报错，不会悄悄跳过。距离指标统一毫米，使用本项目 vessel-paper-v1：Dice、合并双向线性百分位 HD95、双向平均表面距离均值 ASSD，以及 Lee 骨架 clDice。空预测距离为 null，必须连同失败例数报告。</p>
+<p>推理关闭镜像 TTA，采用滑窗高斯融合，单 fold。比较单通道模型时采用一致设置。当前没有生成任何训练 checkpoint，也没有实际深度分割预测或 Dice。</p>
+<h3 id="nnunet-h9">9. 怎样证明传统增强有帮助</h3>
+<p>至少比较：现有传统分割、原始 CTA 的单通道 nnU-Net、CTA + Frangi 的双通道 nnU-Net。只在同一训练/验证划分、相同测试病例、相同训练预算、相同评价定义下比较。通道数变化导致规划可能变化，应记录 patch、batch、网络与总训练量，必要时控制规划以排除混杂。</p>
+<p>重点看 Dice 和 HD95；ASSD 与 clDice 补充。记录逐例结果、均值/标准差、失败数、耗时、显存和所需人工操作。增强不是必然提高效果：错误响应可能增加假阳性，过强滤波可能损伤远端；双通道也不会自动消除跨设备域偏移。</p>
+<h3 id="nnunet-h10">10. 论文依据与官方文档</h3>
+<ul>
+<li><a href="https://arxiv.org/abs/1907.12246">3D Multi-Channel U-net，2019</a>：原始 CTA 与 vesselness 联合作为输入。</li>
+<li><a href="https://github.com/MIC-DKFZ/nnUNet">nnU-Net 官方仓库</a>：自配置流程及引用说明，代码为 Apache-2.0；它是框架，不是直接可用的冠脉预训练权重。</li>
+<li><a href="https://github.com/MIC-DKFZ/nnUNet/blob/v2.6.2/documentation/dataset_format.md">nnU-Net v2 数据格式</a>：独立通道后缀与 dataset.json。</li>
+<li><a href="https://github.com/MIC-DKFZ/nnUNet/blob/v2.6.2/nnunetv2/preprocessing/normalization/map_channel_name_to_normalization.py">归一化映射源码</a>：CT 和 nonorm 的含义。</li>
+<li><a href="https://github.com/MIC-DKFZ/nnUNet/blob/v2.6.2/documentation/manual_data_splits.md">自定义划分</a>：splits_final.json。</li>
+<li><a href="https://pytorch.org/blog/pytorch-2-7/">PyTorch Blackwell 支持说明</a>与<a href="https://pytorch.org/get-started/locally/">当前安装选择器</a>：换机时核对安装组合，不把本机旧 CUDA 构建当成 5080 配置。</li>
+</ul>
+<p>固定版本 requirements.txt 用于复现入口；实际本机依赖版本及验证证据另见 environment / validation 文件。依赖升级后应重做格式、归一化和前向检查。</p><h3>本机验证记录</h3><pre>{
+  &quot;checked_utc&quot;: &quot;2026-11-04T05:19:58.683835+00:00&quot;,
+  &quot;scope&quot;: &quot;Development ROI data/geometry/preprocessing and untrained network forward verification only&quot;,
+  &quot;prepared_cases&quot;: 11,
+  &quot;input_channels&quot;: 2,
+  &quot;official_nnunet_integrity_check&quot;: {
+    &quot;dataset&quot;: &quot;Dataset512_CoronaryFrangiSmokeROI&quot;,
+    &quot;case_count&quot;: 11,
+    &quot;training_started&quot;: false
+  },
+  &quot;official_preprocessed_cases&quot;: 11,
+  &quot;normalization&quot;: [
+    &quot;CTNormalization&quot;,
+    &quot;NoNormalization&quot;
+  ],
+  &quot;internal_split&quot;: {
+    &quot;train&quot;: 8,
+    &quot;validation&quot;: 3,
+    &quot;independent_test&quot;: 0
+  },
+  &quot;enhancement_real_roi_voxelwise_identical_to_existing_cpp&quot;: true,
+  &quot;pipeline_unit_and_integration_tests_passed&quot;: 7,
+  &quot;full_volume_preparation_checked_on_synthetic_data&quot;: true,
+  &quot;full_volume_real_data_batch_prepared&quot;: false,
+  &quot;environment&quot;: {
+    &quot;python&quot;: &quot;3.13.5 | packaged by Anaconda, Inc. | (main, Jun 12 2025, 16:37:03) [MSC v.1929 64 bit (AMD64)]&quot;,
+    &quot;packages&quot;: {
+      &quot;nnunetv2&quot;: &quot;2.6.2&quot;,
+      &quot;dynamic-network-architectures&quot;: &quot;0.4.4&quot;,
+      &quot;nibabel&quot;: &quot;5.4.2&quot;,
+      &quot;numpy&quot;: &quot;2.2.6&quot;,
+      &quot;scipy&quot;: &quot;1.15.3&quot;,
+      &quot;scikit-image&quot;: &quot;0.25.0&quot;
+    },
+    &quot;torch&quot;: &quot;2.6.0+cu124&quot;,
+    &quot;torch_cuda&quot;: &quot;12.4&quot;,
+    &quot;cuda_available&quot;: true,
+    &quot;training_started&quot;: false,
+    &quot;gpu&quot;: &quot;NVIDIA GeForce RTX 3050 4GB Laptop GPU&quot;,
+    &quot;vram_gib&quot;: 3.99957275390625,
+    &quot;cuda_kernel_ok&quot;: true
+  },
+  &quot;forward&quot;: {
+    &quot;purpose&quot;: &quot;Untrained architecture forward smoke check only; no segmentation accuracy&quot;,
+    &quot;dataset&quot;: &quot;Dataset512_CoronaryFrangiSmokeROI&quot;,
+    &quot;device&quot;: &quot;cuda&quot;,
+    &quot;input_shape&quot;: [
+      1,
+      2,
+      32,
+      32,
+      32
+    ],
+    &quot;input_case&quot;: &quot;imagecas_1&quot;,
+    &quot;input_kind&quot;: &quot;center patch of real officially preprocessed dual-channel CTA&quot;,
+    &quot;output_shape&quot;: [
+      1,
+      2,
+      32,
+      32,
+      32
+    ],
+    &quot;planned_training_patch&quot;: [
+      64,
+      112,
+      112
+    ],
+    &quot;parameters&quot;: 16548456,
+    &quot;seconds&quot;: 0.8331085999961942,
+    &quot;finite&quot;: true,
+    &quot;training_started&quot;: false,
+    &quot;optimizer_created&quot;: false,
+    &quot;weights_saved&quot;: false,
+    &quot;peak_allocated_vram_mib&quot;: 94.8603515625
+  },
+  &quot;training_started&quot;: false,
+  &quot;checkpoint_count&quot;: 0,
+  &quot;deep_learning_segmentation_metrics&quot;: null,
+  &quot;not_yet_verified&quot;: [
+    &quot;5080 installation and execution&quot;,
+    &quot;training/backpropagation&quot;,
+    &quot;real full-volume preparation and inference&quot;,
+    &quot;held-out segmentation quality&quot;
+  ]
+}</pre></main></html>

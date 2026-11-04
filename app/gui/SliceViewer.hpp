@@ -1,74 +1,78 @@
 #pragma once
 #include "core/Volume3D.hpp"
-#include "core/AnatomicalGrid.hpp"
 #include <QWidget>
+#include <QFutureWatcher>
 #include <QImage>
 #include <memory>
 #include <optional>
-#include <tuple>
-
-class QGraphicsView;
-class QGraphicsScene;
-class QSlider;
-class QDoubleSpinBox;
-class QCheckBox;
-class QComboBox;
-class QLabel;
+class QSlider; class QLabel; class QGraphicsView; class QGraphicsScene;
+class QDoubleSpinBox; class QCheckBox; class QPushButton;
+class QComboBox; class QRubberBand;
 namespace medvessel::desktop {
 class SliceViewer : public QWidget {
     Q_OBJECT
 public:
-    using Volume = Volume3D<float>;
     explicit SliceViewer(QWidget* parent=nullptr);
-    void setVolume(std::shared_ptr<Volume> volume,const QString& path);
-    bool setMask(std::shared_ptr<Volume> mask,const QString& path,QString* error=nullptr);
-    QImage sliceImage(int plane,int index) const;
     void load(const QString& path);
+    void setVolume(std::shared_ptr<const Volume3D<float>> volume, const QString& name);
+    QImage sliceImage(int plane, int index) const;
+    bool setMask(std::shared_ptr<const Volume3D<float>> mask,const QString& name,QString* error=nullptr);
     void loadMask(const QString& path);
-    void loadResult(const QString& directory);
-    void clear();
-    void setReadOnly();
-    void setPickingEnabled(bool enabled);
     void setSelection(const QString& roi,const QString& seeds);
+    void setPickingEnabled(bool enabled);
+    void setReadOnly();
+    void clear();
+    void loadResult(const QString& directory);
     bool focusWorld(const Point3D& world,QString* error=nullptr);
     void clearFocus();
 signals:
+    void worldPointPicked(double x,double y,double z);
+    void locateThreeDRequested();
     void loaded(bool success);
     void maskLoaded(bool success);
-    void seedPicked(const QString& point);
-    void roiPicked(const QString& box);
+    void seedPicked(const QString& sourceIndex);
+    void roiPicked(const QString& sourceBox);
     void clearSeedsRequested();
     void clearRoiRequested();
-    void worldPicked(double x,double y,double z);
 protected:
     bool eventFilter(QObject* object,QEvent* event) override;
-    void resizeEvent(QResizeEvent* event) override;
 private:
-    std::shared_ptr<Volume> volume_,mask_;
+    struct LoadResult {std::shared_ptr<const Volume3D<float>> volume; QString error; std::shared_ptr<const Volume3D<float>> mask;QString name;};
+    QFutureWatcher<LoadResult> watcher_;
+    std::shared_ptr<const Volume3D<float>> volume_;
+    std::shared_ptr<const Volume3D<float>> mask_;
+    QFutureWatcher<LoadResult> maskWatcher_;
+    QDoubleSpinBox *width_,*level_;
+    QCheckBox* overlay_;
+    QSlider* opacity_;
+    QPushButton* maskButton_;
+    QLabel* maskStatus_;
+    QWidget* pickControls_;
+    QLabel* focusStatus_;
+    std::optional<Point3D> focusWorld_;
+    std::optional<std::array<std::size_t,3>> focusVoxel_;
+    quint64 generation_=0;
+    QString pendingResult_;
+    QComboBox* pickMode_;
+    QLabel* selectionHint_;
+    QRubberBand* rubber_=nullptr;
+    int dragPlane_=-1,dragSlice_=0;
+    QPoint dragStart_;
+    std::array<std::size_t,3> dragVoxel_{};
+    std::optional<std::array<std::size_t,6>> roi_;
+    std::vector<std::array<std::size_t,3>> seeds_;
+    QString roiText_,seedsText_;
+    bool pickingEnabled_=true;
+    bool resultPicking_=false;
+    QPushButton* locateThreeD_;
+    QSlider* sliders_[3];
+    QLabel* labels_[3];
     QGraphicsView* views_[3]{};
     QGraphicsScene* scenes_[3]{};
-    QSlider* sliders_[3]{};
-    QLabel* labels_[3]{};
-    QDoubleSpinBox *width_,*level_;
-    QSlider* opacity_;
-    QCheckBox* showMask_;
-    QComboBox *mode_,*orientation_;
-    DisplayGrid display_;
-    using ImageKey=std::tuple<quint64,quint64,int,int,double,double,int,bool>;
-    mutable std::array<std::optional<ImageKey>,3> imageKeys_;
-    mutable std::array<QImage,3> images_;
     QLabel* status_;
-    bool picking_=true,readOnly_=false;
-    quint64 generation_=0,maskGeneration_=0;
-    QString roi_,seeds_;
-    std::optional<Point3D> focus_;
-    std::optional<std::array<int,3>> dragStart_;
-    int dragPlane_=-1;
+    double minimum_=0, maximum_=1;
+    void render(int plane);
     void refresh();
-    void fullRange();
-    std::optional<std::array<int,3>> voxelAt(int plane,const QPoint& point,bool clamp) const;
-    void request(const QString& path,bool result);
-    void updateDisplay();
-    std::optional<std::array<int,3>> sourceVoxel(const std::array<int,3>& displayIndex) const;
+    bool voxelAt(int plane,const QPoint& viewport,std::array<std::size_t,3>& voxel,bool clamp=false) const;
 };
 }

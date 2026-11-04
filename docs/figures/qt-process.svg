@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="780" viewBox="0 0 1000 780" style="min-width:760px" role="img">
+  <title>Qt GUI 与独立 CLI 进程的控制、通知和结果数据流</title>
+  <desc>GUI 中 MainWindow 读取控件形成 JobConfig，调用 AnalysisJob.start；AnalysisJob 通过 QProcess 启动 CLI、接收输出和退出事件，再用 Qt 信号通知窗口。CLI 读取影像、执行算法、写出结果；GUI 确认完成后读取文件并展示。</desc>
+  <defs>
+    <marker id="control-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#356c8b" stroke-width="1.8" stroke-linejoin="round"/></marker>
+    <marker id="signal-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9" fill="none" stroke="#b3792b" stroke-width="1.8" stroke-linejoin="round"/></marker>
+    <marker id="result-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M1 1L9 5L1 9" fill="none" stroke="#176e59" stroke-width="1.8" stroke-linejoin="round"/></marker>
+  </defs>
+  <g font-family="Segoe UI,Microsoft YaHei,sans-serif">
+    <rect width="1000" height="780" rx="18" fill="#f8faf8"/>
+    <rect x="24" y="24" width="952" height="286" rx="16" fill="#edf5ef" stroke="#bdd2c4" stroke-width="1.5"/>
+    <text x="48" y="59" fill="#176e59" font-size="20" font-weight="700">GUI 进程 · medvessel_gui</text>
+    <text x="948" y="58" text-anchor="end" fill="#61746e" font-size="13">界面、参数与任务管理都在这里</text>
+
+    <g fill="#ffffff" stroke="#bad0c1" stroke-width="1.2">
+      <rect x="48" y="89" width="200" height="95" rx="11"/>
+      <rect x="292" y="89" width="200" height="95" rx="11"/>
+      <rect x="536" y="89" width="200" height="95" rx="11"/>
+      <rect x="780" y="89" width="172" height="95" rx="11"/>
+    </g>
+    <g fill="#61746e" font-size="13">
+      <text x="64" y="111">① 界面交互</text><text x="308" y="111">② 参数数据</text>
+      <text x="552" y="111">③ 任务生命周期</text><text x="796" y="111">④ 子进程控制对象</text>
+    </g>
+    <g fill="#19312e" font-size="21" font-weight="700">
+      <text x="64" y="140">MainWindow</text><text x="308" y="140">JobConfig</text>
+      <text x="552" y="140">AnalysisJob</text><text x="796" y="140">QProcess</text>
+    </g>
+    <g fill="#49675a" font-size="13">
+      <text x="64" y="166">读取控件 · 展示结果</text><text x="308" y="166">校验 · 生成 CLI 参数</text>
+      <text x="552" y="166">接收 start(config)</text><text x="796" y="166">启动 · 读输出 · 等退出</text>
+    </g>
+    <g fill="none" stroke="#356c8b" stroke-width="2.1" marker-end="url(#control-arrow)">
+      <path d="M249 136H284"/><path d="M493 136H528"/><path d="M737 136H772" marker-start="url(#control-arrow)"/>
+    </g>
+    <text x="48" y="216" fill="#49675a" font-size="14">MainWindow 组装 config，再调用 AnalysisJob.start(config)。</text>
+    <path d="M636 185V262H36V136H47" fill="none" stroke="#b3792b" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#signal-arrow)"/>
+    <rect x="177" y="237" width="401" height="22" rx="5" fill="#edf5ef"/>
+    <text x="188" y="253" fill="#96621c" font-size="14">阶段 / 日志 / 成功、失败、取消（Qt 信号）</text>
+
+    <rect x="24" y="390" width="952" height="188" rx="16" fill="#f0f5fa" stroke="#c5d5e1" stroke-width="1.5"/>
+    <text x="48" y="425" fill="#356c8b" font-size="20" font-weight="700">算法进程 · medvessel_cli</text>
+    <text x="948" y="424" text-anchor="end" fill="#61746e" font-size="13">独立进程，执行原有 C++ 算法</text>
+    <path d="M866 186V340H542V449" fill="none" stroke="#356c8b" stroke-width="2.3" marker-start="url(#control-arrow)" marker-end="url(#control-arrow)"/>
+    <text x="480" y="329" fill="#356c8b" font-size="14">启动独立 CLI ↓ · 输出和退出事件返回 ↑</text>
+    <g fill="#ffffff" stroke="#c1d2de" stroke-width="1.2">
+      <rect x="48" y="450" width="240" height="95" rx="11"/>
+      <rect x="416" y="450" width="252" height="95" rx="11"/>
+      <rect x="760" y="450" width="192" height="95" rx="11"/>
+    </g>
+    <g fill="#19312e" font-size="20" font-weight="700">
+      <text x="68" y="484">输入影像</text><text x="436" y="484">原有算法流水线</text><text x="780" y="484">结果文件</text>
+    </g>
+    <g fill="#49675a" font-size="14">
+      <text x="68" y="513">NIfTI / DICOM</text><text x="436" y="513">增强 → 分割 → 骨架 → 测量</text>
+      <text x="780" y="510">NIfTI / CSV</text><text x="780" y="531">JSON / SVG</text>
+    </g>
+    <g fill="none" stroke="#356c8b" stroke-width="2.1" marker-end="url(#control-arrow)">
+      <path d="M289 497H406"/><path d="M669 497H750"/>
+    </g>
+    <text x="331" y="485" fill="#61746e" font-size="13">读取</text><text x="691" y="485" fill="#61746e" font-size="13">写入</text>
+
+    <path d="M856 546V600H500V641" fill="none" stroke="#176e59" stroke-width="2.3" marker-end="url(#result-arrow)"/>
+    <text x="80" y="621" fill="#176e59" font-size="14">⑤ 完成确认与输出校验后，GUI 读取文件</text>
+    <rect x="24" y="642" width="952" height="98" rx="16" fill="#edf5ef" stroke="#bdd2c4" stroke-width="1.5"/>
+    <text x="48" y="675" fill="#176e59" font-size="19" font-weight="700">回到 GUI 展示 · 仍是同一个 medvessel_gui 进程</text>
+    <text x="48" y="708" fill="#19312e" font-size="17">读取投影、表格与体数据 → 更新图像、分支表和三维视图</text>
+    <text x="48" y="764" fill="#61746e" font-size="13">蓝色：参数 / 进程控制与返回　　橙色虚线：Qt 信号通知　　绿色：结果文件读回</text>
+  </g>
+</svg>

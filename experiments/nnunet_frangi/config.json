@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "full_dataset_id": 511,
+  "full_dataset_name": "CoronaryFrangi",
+  "smoke_dataset_id": 512,
+  "smoke_dataset_name": "CoronaryFrangiSmokeROI",
+  "channel_names": {"0": "CT", "1": "nonorm"},
+  "labels": {"background": 0, "coronary": 1},
+  "frangi": {"scales_mm": [0.5, 1.0, 1.5, 2.0], "alpha": 0.5, "beta": 0.5, "c": 100.0},
+  "foreground": "source label > 0",
+  "split_seed": 20261104,
+  "smoke_note": "Existing reference-guided development ROIs: format/forward checks only, not full-volume data or a held-out test."
+}

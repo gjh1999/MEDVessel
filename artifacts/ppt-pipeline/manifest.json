@@ -1,0 +1,47 @@
+{
+  "source_case": "ImageCAS case 1",
+  "reference": "ImageCAS-X v2, record 23562647",
+  "scope": "reference-guided local development ROI; not held-out",
+  "source_roi": [
+    198,
+    229,
+    130,
+    109,
+    109,
+    81
+  ],
+  "slice_z_roi": 40,
+  "ct_window_width": 700,
+  "ct_window_level": 250,
+  "vesselness_display_range": [
+    0,
+    1
+  ],
+  "metrics": {
+    "prediction_path": "build/imagecas-x-case1/result/mask.nii.gz",
+    "reference_path": "build/imagecas-x-case1/reference.nii.gz",
+    "reference_negative_inside": false,
+    "reference_aligned_to_prediction": false,
+    "dice": 0.81618565903,
+    "cldice": 0.875168060758,
+    "hd95_mm": 2.73997545242,
+    "symmetric_mean_centerline_distance_mm": 0.772039814623,
+    "prediction_components": 1,
+    "reference_components": 1
+  },
+  "files": [
+    "pipeline_mip_16x9.png",
+    "01_source_mip.png",
+    "02_vesselness_mip.png",
+    "03_mask_mip.png",
+    "04_skeleton_overlay_mip.png",
+    "comparison_mip_16x9.png",
+    "pipeline_slice_16x9.png",
+    "01_source_slice.png",
+    "02_vesselness_slice.png",
+    "03_mask_slice.png",
+    "04_skeleton_overlay_slice.png",
+    "comparison_slice_16x9.png"
+  ],
+  "note": "Existing outputs only; no algorithm rerun or image synthesis."
+}

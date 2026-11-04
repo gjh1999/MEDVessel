@@ -72,7 +72,7 @@ MainWindow::MainWindow(QWidget* parent):QMainWindow(parent),job_(this) {
     parameters_=new QWidget;auto* left=new QVBoxLayout(parameters_);left->setContentsMargins(0,0,8,0);scroll->setWidget(parameters_);split->addWidget(scroll);
     auto group=[&](const QString& title){auto* g=new QGroupBox(title);auto* form=new QFormLayout(g);form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);form->setLabelAlignment(Qt::AlignLeft);left->addWidget(g);return form;};
     auto edit=[&](QFormLayout* f,const QString& key,const QString& label,const QString& hint){auto* e=new QLineEdit;e->setObjectName(key);e->setPlaceholderText(hint);e->setToolTip(hint);edits_[key]=e;f->addRow(label,e);return e;};
-    auto number=[&](QFormLayout* f,const QString& key,const QString& label,double min,double max,int decimals){auto* e=new QDoubleSpinBox;e->setObjectName(key);e->setRange(min,max);e->setDecimals(decimals);e->setSingleStep(decimals>1?.05:1);doubles_[key]=e;f->addRow(label,e);};
+    auto number=[&](QFormLayout* f,const QString& key,const QString& label,double min,double max,int decimals){auto* e=new QDoubleSpinBox;e->setObjectName(key);e->setRange(min,max);e->setDecimals(decimals);e->setSingleStep(decimals>1?.05:1);doubles_[key]=e;f->addRow(label,e);return e;};
     auto integer=[&](QFormLayout* f,const QString& key,const QString& label,int min,int max){auto* e=new QSpinBox;e->setObjectName(key);e->setRange(min,max);ints_[key]=e;f->addRow(label,e);};
     auto check=[&](QFormLayout* f,const QString& key,const QString& label){auto* e=new QCheckBox(label);e->setObjectName(key);checks_[key]=e;f->addRow(e);};
     auto* inputForm=group("01 · 输入与保存");edit(inputForm,"input","影像","NIfTI 文件 / 单一 DICOM 序列目录");
@@ -93,6 +93,8 @@ MainWindow::MainWindow(QWidget* parent):QMainWindow(parent),job_(this) {
     check(advancedForm,"dark","增强暗管（默认亮管）");check(advancedForm,"nms","使用 NMS 自动种子（无手工种子时）");
     number(advancedForm,"nmsStep","NMS 距离 mm",.0001,1000,4);integer(advancedForm,"minComponent","最小连通域 / 体素",0,1000000000);
     number(advancedForm,"prune","短枝修剪 mm",0,10000,3);integer(advancedForm,"threads","线程数",1,256);
+    number(advancedForm,"growthBand","核心补边范围 mm",0,20,3)->setToolTip("0 关闭；启用时须有种子，先提取严格核心，再在固定核心附近补边。");
+    number(advancedForm,"coreRatio","种子核心响应比例",0,1,3)->setToolTip("默认 0.35：核心阈值=max(low,种子响应中位数×比例)；0 表示使用 high。");
     connectivity_=new QComboBox;connectivity_->addItems({"26","6"});advancedForm->addRow("生长邻接",connectivity_);
     auto* reset=new QPushButton("恢复默认参数");left->addWidget(reset);left->addStretch();
     auto* center=new QWidget;auto* centerLayout=new QVBoxLayout(center);centerLayout->setContentsMargins(10,0,10,0);split->addWidget(center);
@@ -105,6 +107,8 @@ MainWindow::MainWindow(QWidget* parent):QMainWindow(parent),job_(this) {
     connect(threeD_,&ThreeDViewer::branchLocationChanged,this,[this](double x,double y,double z){resultSlices_->focusWorld({x,y,z});});
     connect(threeD_,&ThreeDViewer::locationCleared,resultSlices_,&SliceViewer::clearFocus);
     connect(threeD_,&ThreeDViewer::locateSlicesRequested,this,[this,imageTabs]{if(result_.isEmpty())return;imageTabs->setCurrentWidget(resultSlices_);if(resultSlices_->property("requestedResult").toString()!=result_){resultSlices_->setProperty("requestedResult",result_);resultSlices_->loadResult(result_);}});
+    connect(resultSlices_,&SliceViewer::worldPointPicked,this,[this](double x,double y,double z){threeD_->focusWorld({x,y,z});});
+    connect(resultSlices_,&SliceViewer::locateThreeDRequested,this,[this,imageTabs]{imageTabs->setCurrentWidget(threeD_);if(threeD_->branchCount()==0)threeD_->load();});
     connect(resultSlices_,&SliceViewer::loaded,this,[this](bool success){if(!success)resultSlices_->setProperty("requestedResult",QString());});
 #endif
     auto* browseSlices=new QPushButton("浏览输入切片");browseSlices->setObjectName("browseSlices");inputForm->addRow(browseSlices);
@@ -166,11 +170,13 @@ JobConfig MainWindow::config() const {
     JobConfig c;c.input=edits_["input"]->text().trimmed();c.outputRoot=edits_["output"]->text().trimmed();c.executable=edits_["executable"]->text().trimmed();
     c.scales=edits_["scales"]->text();c.roi=edits_["roi"]->text();c.seeds=edits_["seeds"]->text();c.minIntensity=edits_["minIntensity"]->text();c.maxIntensity=edits_["maxIntensity"]->text();
     c.alpha=doubles_["alpha"]->value();c.beta=doubles_["beta"]->value();c.c=doubles_["c"]->value();c.low=doubles_["low"]->value();c.high=doubles_["high"]->value();c.nmsStep=doubles_["nmsStep"]->value();c.prune=doubles_["prune"]->value();
+    c.growthBandMm=doubles_["growthBand"]->value();c.seedCoreRatio=doubles_["coreRatio"]->value();
     c.threads=ints_["threads"]->value();c.minComponent=ints_["minComponent"]->value();c.dark=checks_["dark"]->isChecked();c.nms=checks_["nms"]->isChecked();c.seedsInSource=checks_["sourceSeeds"]->isChecked();c.connectivity=connectivity_->currentText().toInt();return c;
 }
 void MainWindow::setConfig(const JobConfig& c) {
     edits_["input"]->setText(c.input);edits_["output"]->setText(c.outputRoot);edits_["executable"]->setText(c.executable);edits_["scales"]->setText(c.scales);edits_["roi"]->setText(c.roi);edits_["seeds"]->setText(c.seeds);edits_["minIntensity"]->setText(c.minIntensity);edits_["maxIntensity"]->setText(c.maxIntensity);
     doubles_["alpha"]->setValue(c.alpha);doubles_["beta"]->setValue(c.beta);doubles_["c"]->setValue(c.c);doubles_["low"]->setValue(c.low);doubles_["high"]->setValue(c.high);doubles_["nmsStep"]->setValue(c.nmsStep);doubles_["prune"]->setValue(c.prune);
+    doubles_["growthBand"]->setValue(c.growthBandMm);doubles_["coreRatio"]->setValue(c.seedCoreRatio);
     ints_["threads"]->setValue(c.threads);ints_["minComponent"]->setValue(c.minComponent);checks_["dark"]->setChecked(c.dark);checks_["nms"]->setChecked(c.nms);checks_["sourceSeeds"]->setChecked(c.seedsInSource);connectivity_->setCurrentText(QString::number(c.connectivity));
 }
 bool MainWindow::startAnalysis(QString* error) {

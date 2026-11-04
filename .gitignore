@@ -4,3 +4,5 @@
 /datasets/
 __pycache__/
 *.py[cod]
+/experiments/nnunet_frangi/.venv/
+/experiments/nnunet_frangi/work/

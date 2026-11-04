@@ -1,11 +1,10 @@
-# Qt 工作台是怎么写出来的
+# Qt 工作台：按模块一步步实现
 
-新增功能说明：三方向原网格切片、窗宽窗位、Mask 叠加、鼠标点选与框选、VTK 三维联动与结果切片定位已接入，具体实现见本文末尾第 17～21 节；前文的投影调用链仍保留。
+本教程以当前源码为终点，按适合学习的构建顺序拆解桌面程序，不代表历史提交顺序。使用方法见 [桌面操作手册](gui.md)。代码片段是节选或教学骨架，完整实现以源码为准。
 
-这篇讲实现思路和代码，使用步骤见 [桌面操作手册](gui.md)。不要求你先学完 Qt：有基本 C++ 类、函数、指针和 lambda 知识，就可以从这里开始。
-先读前四节，建立整体画面；随后跟着一次“开始分析”读实现；最后通过小练习修改界面。代码片段用于讲解，省略部分会明确标出，完整实现以源码为准。
+先理解总体模块，再依次建立窗口、参数、任务、结果和交互视图。每一步都说明模块接口及完成后的可见行为。
 
-## 1. 先记住：一个窗口、一个任务管理器、一个算法进程
+## 1. 总体结构与模块边界
 
 桌面版有三个主要类，另有应用入口：
 
@@ -22,7 +21,44 @@
 核心点：GUI 传递参数，CLI 执行算法，文件保存结果。GUI 没有在按钮回调中直接计算 Frangi，也没有重新实现一份血管算法。
 当前这条链路不用 QThread；QProcess 是另一个操作系统进程的控制对象，不能把它理解成“创建了一个 Qt 工作线程”。
 
-## 2. 窗口为什么能一直响应：事件循环
+
+
+### 把总体图落实为代码模块
+
+模块按职责划分，桌面代码集中在 app/gui。
+
+| 模块 | 核心文件 | 输入 | 输出 |
+| --- | --- | --- | --- |
+| 应用入口 | main.cpp | 启动参数、Qt 环境 | 窗口与事件循环 |
+| 界面编排 | MainWindow.hpp/.cpp | 用户操作、任务通知 | 配置快照、展示与视图连接 |
+| 参数模型 | JobConfig.hpp/.cpp | 表单值或 JSON | 校验结果、CLI 参数列表 |
+| 任务控制 | AnalysisJob.hpp/.cpp | JobConfig | 阶段、日志与最终状态 |
+| 二维影像 | SliceViewer.hpp/.cpp | 体数据、Mask、世界坐标 | 切片、种子和 ROI 选择通知 |
+| 三维影像 | ThreeDViewer.hpp/.cpp | 结果目录、分支与世界坐标 | 三维显示、分支与位置通知 |
+| 算法执行 | pipeline.cpp 与核心库 | CLI 参数、输入影像 | NIfTI、CSV、SVG 与运行记录 |
+
+MainWindow 把模块接起来：SliceViewer 发出 seedPicked，窗口把选择回填参数；AnalysisJob 发出 succeeded，窗口调用 openResult。查看器不持有任务管理器，任务管理器不认识输入框；各模块通过值和通知协作。
+
+### 按可运行的增量推进
+
+| 步骤 | 新增内容 | 可观察的结果 |
+| --- | --- | --- |
+| 1 | 入口、窗口和布局 | 空工作台能打开、缩放、关闭 |
+| 2 | JobConfig 与表单往返 | 输入值能保存并载回 |
+| 3 | AnalysisJob 与 QProcess | 按钮启动 CLI，界面继续响应 |
+| 4 | 日志、阶段与任务收尾 | 能查看状态，失败后可以再次运行 |
+| 5 | openResult、图像和表格 | 显示新结果并重开历史目录 |
+| 6 | SliceViewer 和鼠标映射 | 浏览输入、调窗、选择种子与 ROI |
+| 7 | ThreeDViewer 与跨视图连接 | 表格、三维和结果切片定位同一处 |
+| 8 | 功能扩展、验证和打包 | 改动沿模块传递，完整目录可启动 |
+
+第一次按顺序阅读，先跑通合成数据，再逐步对照各模块源码。
+
+## 2. 第一步：建立应用入口和窗口骨架
+
+先实现能显示的窗口。main.cpp 管应用生命周期，MainWindow 建立布局和控件，对象树负责生命周期。先检查窗口缩放、参数区滚动与三栏调整，再接算法。
+
+### 窗口为什么能一直响应：事件循环
 
 普通命令行程序通常从头计算到尾，然后退出。图形界面需要不断处理点击、键盘、重绘、计时器和进程通知，这由事件循环负责。
 
@@ -42,7 +78,7 @@ return app.exec();
 本项目的算法计算在 CLI 进程中，所以 GUI 可以继续处理点击和日志。但“用了 QProcess”不代表所有界面代码都不会卡：打开大型 SVG、解析大 CSV 仍在 GUI 线程，当前只验证了现有样例规模。
 Qt 明确提示，在 GUI 线程调用阻塞等待方法可能冻结界面，见 [QProcess 的等待方法说明](https://doc.qt.io/qt-6/qprocess.html)。
 
-## 3. 界面是怎样排出来的：控件与布局
+### 界面是怎样排出来的：控件与布局
 
 我们使用 Qt Widgets，界面用 C++ 创建，没有 `.ui` 文件，也没有 QML。
 控件负责显示与输入；布局负责它们的位置和大小。源码中的排布关系是：
@@ -87,7 +123,57 @@ form->addRow(label, e);       // 放入表单布局
 `edits_` 是按名称存放输入框指针的 QMap，不是参数本身。参数值要通过 `e->text()` 读取。这里采用字符串 key 容易写得紧凑，但拼错 key 不会得到强类型字段那样的编译期检查；扩展时要同时检查创建、读取和回填处。
 QSS 样式集中在构造函数的 `setStyleSheet`，负责颜色、边框、间距等。`QPushButton#run` 中的 `#run` 匹配控件的 objectName；QSS 不负责算法和任务生命周期。
 
-## 4. 点击怎样调用代码：信号、connect 与 lambda
+### new 出来的控件为什么没有逐个 delete
+
+Qt 的 QObject 支持父子对象树。窗口销毁时会清理它拥有的子对象；布局和容器也会把相应控件纳入窗口结构。
+但“Qt 自动管理”不表示任意 new 都不用考虑生命周期。要区分 QObject 父对象、布局管理和 Graphics Scene 的图元所有权。
+
+本项目中 model_ 和 scene_ 显式以 this 为父对象。AnalysisJob 是窗口的值成员，process_、killTimer_ 是 AnalysisJob 的值成员，会随包含它们的 C++ 对象析构。
+`job_(this)` 同时设置了 QObject 父对象；该值成员在窗口基类析构前析构并从父对象树移除。扩展时不要把这种成员指针交给 delete，也不要把仍会被父对象先销毁的栈对象随意设成其子对象。
+
+SVG 的 renderer 尤其要注意：`setSharedRenderer()` 不把 renderer 的所有权交给图元，renderer 必须活得至少与使用它的图元一样久。
+当前替换顺序是先 `scene_->clear()` 删除旧图元，再删除旧 renderer；新 renderer 校验完成才交给窗口保存。反过来先删 renderer，会留下图元仍引用已释放对象的风险。
+可对照 [QGraphicsSvgItem 所有权说明](https://doc.qt.io/qt-6/qgraphicssvgitem.html) 与 [Qt 对象树说明](https://doc.qt.io/qt-6/objecttrees.html)。
+
+
+
+## 3. 第二步：建立参数模型与表单往返
+
+先在 JobConfig 定义任务值，再实现 config() 读取和 setConfig() 回填。保存配置与开始分析使用同一份值；先检查保存后重新载入能恢复所有输入。
+
+### JobConfig 为什么单独放：值、校验与坐标换算
+
+控件保存的是交互状态，JobConfig 保存的是一份可复制、可保存的任务值。它不继承 QWidget，不依赖某个输入框是否还存在。
+本项目有两条配对路径：
+
+```text
+读取界面：MainWindow::config()     控件 → JobConfig
+回填界面：MainWindow::setConfig()  JobConfig → 控件
+保存文件：JobConfig::toJson()      JobConfig → QJsonObject → 文件
+载入文件：JobConfig::fromJson()    文件 → QJsonObject → JobConfig
+```
+
+实际参数由 `arguments(output)` 生成。传给 QProcess 的是“程序路径 + 参数列表”，不是把它们拼成一条 shell 命令：
+
+```cpp
+process_.start(config.executable, args);
+```
+
+因此 `C:/my data/source.nii.gz` 是一个列表元素，不需要自己在路径外再嵌套一层引号。这个实现直接启动 EXE，没有通过 cmd.exe 或 PowerShell 去解释参数。
+低/高阈值、正尺度等规则复用核心的 `parseRunOptions`，GUI 不再维护一套不同的分割参数规则。输入框的范围限制只解决部分错误，最终仍需语义校验。
+
+种子坐标换算也在这里：原图种子减去 ROI 起点得到局部索引。例如 `(89,87,19) - (40,55,0) = (49,32,19)`。先判断种子不小于 ROI 起点再做减法，避免无符号索引减成很大的数；再检查局部索引小于 ROI 尺寸。
+GUI 还没读整个影像，故完整图像尺寸、几何是否合法仍由 CLI 负责验证。
+
+线程数没有变成 `--threads` 参数，因为当前 CLI 没有这个参数。AnalysisJob 把它写入子进程的 `OMP_NUM_THREADS` 环境变量。只有启用 OpenMP 的构建和已并行的计算路径会使用它。
+
+
+
+## 4. 第三步：连接窗口与算法任务
+
+先写 AnalysisJob 的 start 接口，再让按钮收集 JobConfig 并调用它。沿调用链定位各函数，区分立即返回的启动请求与稍后收到的完成通知。
+
+### 点击怎样调用代码：信号、connect 与 lambda
 
 信号表示“发生了某件事”，连接指定“谁来处理”。按钮已经有 clicked 信号，我们接上自己的函数即可。
 源码使用现代函数指针形式，下面是开始按钮连接的排版展开：
@@ -123,7 +209,7 @@ AnalysisJob 声明自己的 signals，因此类中有 `Q_OBJECT`，构建时由 
 **信号槽不自动等于异步。** 当前对象都在 GUI 线程，常见 AutoConnection 会直接调用接收函数；进程的输出/结束事件是在事件循环中陆续送来的。耗时计算之所以不占用 GUI 线程，是因为它在另一个 CLI 进程中。
 更完整的连接与线程规则见 [Qt Signals & Slots](https://doc.qt.io/qt-6/signalsandslots.html) 和 [Threads and QObjects](https://doc.qt.io/qt-6/threads-qobject.html)。
 
-## 5. 沿一次“开始分析”完整走一遍
+### 沿一次“开始分析”完整走一遍
 
 建议对照 [MainWindow.cpp](../app/gui/MainWindow.cpp) 中的 `config()`、`startAnalysis()`，再看 [AnalysisJob.cpp](../app/gui/AnalysisJob.cpp) 的 `start()`。
 
@@ -144,33 +230,13 @@ AnalysisJob 声明自己的 signals，因此类中有 `Q_OBJECT`，构建时由 
 这里有两个不同层次的“成功”：`start()` 返回 true 表示通过前置准备并发出了启动请求，不表示算法已经算完，甚至不保证操作系统最终能启动那个文件。稍后启动失败由 FailedToStart 通知，算法错误由退出码通知。
 GUI 不把“目录出现了”当作完成；每次新目录也防止旧 Mask 冒充本次输出。
 
-## 6. JobConfig 为什么单独放：值、校验与坐标换算
 
-控件保存的是交互状态，JobConfig 保存的是一份可复制、可保存的任务值。它不继承 QWidget，不依赖某个输入框是否还存在。
-本项目有两条配对路径：
 
-```text
-读取界面：MainWindow::config()     控件 → JobConfig
-回填界面：MainWindow::setConfig()  JobConfig → 控件
-保存文件：JobConfig::toJson()      JobConfig → QJsonObject → 文件
-载入文件：JobConfig::fromJson()    文件 → QJsonObject → JobConfig
-```
+## 5. 第四步：补齐日志、状态与任务收尾
 
-实际参数由 `arguments(output)` 生成。传给 QProcess 的是“程序路径 + 参数列表”，不是把它们拼成一条 shell 命令：
+任务能启动后，先接输出并按行缓存，再接阶段和运行状态，最后统一成功、失败和取消的收尾。分别测试无效输入与主动停止，检查按钮能恢复。
 
-```cpp
-process_.start(config.executable, args);
-```
-
-因此 `C:/my data/source.nii.gz` 是一个列表元素，不需要自己在路径外再嵌套一层引号。这个实现直接启动 EXE，没有通过 cmd.exe 或 PowerShell 去解释参数。
-低/高阈值、正尺度等规则复用核心的 `parseRunOptions`，GUI 不再维护一套不同的分割参数规则。输入框的范围限制只解决部分错误，最终仍需语义校验。
-
-种子坐标换算也在这里：原图种子减去 ROI 起点得到局部索引。例如 `(89,87,19) - (40,55,0) = (49,32,19)`。先判断种子不小于 ROI 起点再做减法，避免无符号索引减成很大的数；再检查局部索引小于 ROI 尺寸。
-GUI 还没读整个影像，故完整图像尺寸、几何是否合法仍由 CLI 负责验证。
-
-线程数没有变成 `--threads` 参数，因为当前 CLI 没有这个参数。AnalysisJob 把它写入子进程的 `OMP_NUM_THREADS` 环境变量。只有启用 OpenMP 的构建和已并行的计算路径会使用它。
-
-## 7. QProcess 如何接进度：先读字节，再按行解析
+### QProcess 如何接进度：先读字节，再按行解析
 
 CLI 在处理步骤前向 stderr 写入一行协议文本，例如：
 
@@ -194,7 +260,7 @@ QProcess 的 readyRead 通知只表示现在有字节可读，既不保证“一
 
 当前没有每个阶段的工作总量，因此进度条显示忙碌状态而不是假百分比。窗口的 250 ms QTimer 只更新耗时；它不会驱动算法，也不代表计算每 250 ms 完成一份。
 
-## 8. 停止和失败：为什么需要一份任务状态
+### 停止和失败：为什么需要一份任务状态
 
 AnalysisJob 中 `active_` 回答“当前有任务吗”，`cancelRequested_` 回答“用户要求停止了吗”。它们与磁盘记录共同描述任务生命周期。
 
@@ -213,7 +279,7 @@ finished 回调先看取消意图，因此用户中止产生的非零退出不�
 窗口运行时禁止改参数和切换结果，关闭窗口时也要求先停止。AnalysisJob 析构中的 kill 和有限 waitForFinished 是最后清理手段，不是正常运行按钮采用的等待方式。
 如果程序或系统直接崩溃，磁盘可能保留 running；当前实现不推断它已经成功，也没有断点恢复。
 
-## 9. 为什么有两个 JSON 和一个日志
+### 为什么有两个 JSON 和一个日志
 
 | 文件或对象 | 回答什么问题 |
 | --- | --- |
@@ -226,7 +292,13 @@ GUI 配置中种子可以是原图索引；run.json 中种子是实际使用的�
 保存 JSON 使用 QSaveFile：先写临时内容，写完后 commit，让“替换目标文件”成为提交步骤，降低中途失败留下半个目标文件的风险。仍需检查 open、write 和 commit 的返回值；这不是对断电等所有故障的绝对保证。
 schema_version 是格式版本。当前 fromJson 验证版本和部分必要类型、补默认值后校验参数，不是对每个 JSON 字段都做严格 schema 验证。
 
-## 10. 结果怎么变成图像和表格
+
+
+## 6. 第五步：读取结果并建立图像与表格展示
+
+把 openResult 作为独立入口，同时支持新任务结果和历史目录。解析记录后加载投影与分支表；展示只依赖结果文件，无需再次运行算法。
+
+### 结果怎么变成图像和表格
 
 先看 MainWindow::openResult。它先读取并校验候选结果，再替换当前显示。坏目录不会一开始就清空已打开的好结果。
 GUI 任务记录存在时，状态必须为 completed；旧 CLI 目录没有 GUI 记录仍可打开，但摘要会明确标明。随后检查 run.json、分支 CSV 列名和行数，以及 SVG 是否能加载。
@@ -247,93 +319,13 @@ preview.svg → QSvgRenderer（解析 SVG）
 表格则采用 Qt 的模型/视图方式：CSV 读成 QStandardItemModel，QTableView 负责展示。数字用 DisplayRole 存成数值，便于按数值排序，避免把字符串 `10` 排在 `2` 前面。空测量显示为破折号，不当成零。
 `setSortingEnabled(false)` 后批量装入，再恢复排序，避免边插入边排序打乱装入过程。当前 CSV 解析只适合本项目固定、无引号转义的简单数字表，不是通用 CSV 解析器。
 
-## 11. new 出来的控件为什么没有逐个 delete
 
-Qt 的 QObject 支持父子对象树。窗口销毁时会清理它拥有的子对象；布局和容器也会把相应控件纳入窗口结构。
-但“Qt 自动管理”不表示任意 new 都不用考虑生命周期。要区分 QObject 父对象、布局管理和 Graphics Scene 的图元所有权。
 
-本项目中 model_ 和 scene_ 显式以 this 为父对象。AnalysisJob 是窗口的值成员，process_、killTimer_ 是 AnalysisJob 的值成员，会随包含它们的 C++ 对象析构。
-`job_(this)` 同时设置了 QObject 父对象；该值成员在窗口基类析构前析构并从父对象树移除。扩展时不要把这种成员指针交给 delete，也不要把仍会被父对象先销毁的栈对象随意设成其子对象。
+## 7. 第六步：实现二维切片显示与灰度叠加
 
-SVG 的 renderer 尤其要注意：`setSharedRenderer()` 不把 renderer 的所有权交给图元，renderer 必须活得至少与使用它的图元一样久。
-当前替换顺序是先 `scene_->clear()` 删除旧图元，再删除旧 renderer；新 renderer 校验完成才交给窗口保存。反过来先删 renderer，会留下图元仍引用已释放对象的风险。
-可对照 [QGraphicsSvgItem 所有权说明](https://doc.qt.io/qt-6/qgraphicssvgitem.html) 与 [Qt 对象树说明](https://doc.qt.io/qt-6/objecttrees.html)。
+先让 SliceViewer 将一个切层转成 QImage，再推广到三个轴映射，随后加入滑块、窗宽窗位和 Mask。每次只增加一种映射，便于区分读文件、灰度和坐标错误。
 
-## 12. CMake 和打包分别解决什么
-
-编译阶段需要头文件、链接库和 moc；运行阶段需要 Qt/编译器 DLL、插件及算法 EXE。这是两组不同的问题。
-下面摘取构建中的关键句，省略源文件列表等上下文：
-
-```cmake
-find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets SvgWidgets Concurrent)
-set_target_properties(medvessel_desktop PROPERTIES AUTOMOC ON)
-target_link_libraries(medvessel_desktop PUBLIC
-    medvessel Qt6::Widgets Qt6::SvgWidgets Qt6::Concurrent)
-add_executable(medvessel_gui WIN32 app/gui/main.cpp)
-target_link_libraries(medvessel_gui PRIVATE medvessel_desktop)
-```
-
-`medvessel_desktop` 收纳可被程序和测试共用的桌面实现，main.cpp 则只放应用入口。它是静态目标不代表整个应用完全静态：Qt 在本机仍以动态 DLL 形式加载。
-AUTOMOC 处理带 Q_OBJECT 的类；忘记启用常会遇到元对象/虚表等链接错误。Widgets 提供窗口控件，SvgWidgets 提供 SVG 图元相关组件及其依赖。Windows 的 WIN32 标志用于 GUI 子系统，不表示“只能生成 32 位程序”。
-
-`start_gui.ps1` 负责开发环境下的 DLL 与 Qt 插件路径。`package_gui.ps1` 则把可运行文件集中到 build/desktop，用 windeployqt 收集 Qt 运行依赖，并检查补齐本机 UCRT64 的依赖链。
-qwindows.dll 是平台插件的一部分；找到 Qt6Widgets.dll 不代表已经找到平台插件。qt.conf 让包内插件路径可定位。CLI 的 UTF-8 manifest 解决现代 Windows 下窄字符接口与中文路径的代码页约定，不是修改用户系统设置。
-打包还包含合成示例和单文件学习网页。当前是本机可运行目录，不是跨系统安装器；不能把整个目录简化为只发 medvessel_gui.exe。
-
-## 13. 怎样给它增加一个参数：用短枝阈值作例子
-
-现有 `prune` 是一条可以完整追踪的参数链。不要马上修改算法；先在源码中找出这六处：
-
-| 层次 | 当前对应代码 | 为什么需要它 |
-| --- | --- | --- |
-| 参数值 | JobConfig::prune | 保存默认值和当前值 |
-| 控件 | number(advancedForm, "prune", ...) | 让用户输入数值并理解单位 mm |
-| 读取/回填 | config() / setConfig() | 运行时读到新值，载入配置时显示正确值 |
-| JSON | toJson / fromJson 的 prune | 保存和恢复该值 |
-| 参数列表 | arguments 中的 --prune-mm | 把值传到 CLI，调用核心校验 |
-| 算法入口 | RunOptions 与 pipeline.cpp | CLI 接受值并执行短枝修剪 |
-
-新加真正的算法参数时，照这条链逐层补齐，再加有意义的往返或行为验证。只加输入框不会改变算法；只改 arguments 而不补 setConfig，会让载入配置后的界面值不一致。
-纯显示开关则不需要经过 CLI：例如显示/隐藏日志，只需要改变日志控件的可见性。先判断新需求属于“显示行为”还是“算法输入”，再决定放在哪一层。
-
-## 14. 带着源码做四个小练习
-
-这些练习是学习建议，仓库没有预先加入这些功能，避免把“待练习”误认为当前已实现。
-
-1. 修改标题和开始按钮文案。只改 MainWindow 的控件文字，确认输出文件没有变化，体会显示层与算法层的边界。
-2. 加一个“隐藏/显示日志”开关。用 QCheckBox::toggled 连接日志容器的 setVisible；注意只隐藏文本框还是整个带标题的容器，布局会如何变化。
-3. 给 run_ 的 enabled 状态加断点：开始时变为 false，结束后变为 true。沿 runningChanged 观察状态通知如何影响多个控件，而不是在每个错误分支到处手动解锁。
-4. 将保存后的配置载入，再比较所有参数。重点检查 ROI、种子坐标模式、灰度空值和线程数，理解“控件状态 ↔ 参数值 ↔ JSON”是否完整往返。
-
-如果练习只改变文字或布局，构建 GUI 并观察即可；如果改了参数链、任务状态或文件读写，再运行对应 GUI 测试。不要用截图看起来正常来代替对任务状态的检查。
-
-## 15. 调试时断点放哪里
-
-| 现象 | 先看哪里 | 重点检查 |
-| --- | --- | --- |
-| 按钮点了没反应 | clicked 的连接、startAnalysis | 是否连接、是否按钮禁用、是否校验提前返回 |
-| 改参数但结果像没变 | config、arguments、gui_run.json | 控件 key、读回值、真实参数数组 |
-| 原图种子越界 | JobConfig::arguments | ROI 起点、勾选坐标模式、是否重复裁剪 |
-| 任务一直忙碌 | finished / errorOccurred / complete | 是否收到结束、是否遗漏失败分支、日志最后阶段 |
-| 图表还是上一例 | openResult | 新结果是否通过解析、是否只打开了参数而未打开结果 |
-| EXE 在开发机能跑，移动后失败 | DLL、platforms、qt.conf | 是否搬走完整目录、是否混入 Anaconda Qt 5 插件 |
-
-测试入口是 [gui_tests.cpp](../tests/gui_tests.cpp)。QSignalSpy 记录信号，QTRY_COMPARE/QTRY_VERIFY 在等待条件时让事件循环继续工作；这与在按钮回调中阻塞等待进程不是一回事。
-现有测试启动真实合成 CLI，并验证结果、配置、中文及空格路径、失败和取消。offscreen 表示无可见桌面平台，可用于自动检查，并不等于验证了不同屏幕 DPI 与所有真人操作。
-
-## 16. 最后用一张卡片回顾
-
-- 界面怎么搭：Widgets 是控件，Layout 和 Splitter 决定排布，QSS 决定外观。
-- 点击怎么走：clicked → connect 的接收函数 → config → JobConfig → AnalysisJob::start。
-- 为什么能响应：事件循环继续工作，耗时算法在独立 CLI 进程里执行。
-- 怎么知道进度：读取字节，按行缓冲解析阶段，再通过信号更新窗口。
-- 怎么确认完成：进程正常退出、必要输出检查、写最终状态；中止目录不当完成结果。
-- 怎么显示结果：投影页的 SVG 进入 Graphics View，CSV 进入 Model/View；新增 SliceViewer 显示体数据切片，可选 ThreeDViewer 显示三维表面和中心线。
-- 怎么扩展：显示需求放窗口，参数换算放 JobConfig，进程生命周期放 AnalysisJob，算法仍放核心/CLI。
-
-现在按 `main.cpp → MainWindow 构造与连接 → config/startAnalysis → JobConfig::arguments → AnalysisJob → openResult` 的顺序读一遍源码，你应该能把整个桌面入口串起来。
-
-## 17. 三方向切片：体数据怎样变成 QImage
+### 三方向切片：体数据怎样变成 QImage
 
 新增 `app/gui/SliceViewer.hpp/.cpp`。MainWindow 的“浏览输入切片”将输入路径传给 `load()`，QtConcurrent 在后台读取影像，QFutureWatcher 在 GUI 线程收到 finished 后更新控件。后台函数只返回数据和错误，不访问窗口。改变输入路径会禁用旧切片，重新加载先清空旧图。
 
@@ -343,7 +335,7 @@ QGraphicsPixmapItem 按水平和垂直轴 spacing 缩放，再适应窗口，让
 
 测试用非立方尺寸、非等距 spacing 和反向方向矩阵的体数据，核对切片像素、三个平面尺寸、切层边界和加载失败时旧图清除；同时读取实际 NIfTI 合成样例。窗宽窗位和 Mask 叠加见下一节，点选种子与框选 ROI 见第 19 节。
 
-## 18. 窗宽窗位与 Mask：共用体素映射
+### 窗宽窗位与 Mask：共用体素映射
 
 窗宽 W 必须大于零，窗位 L 是显示区间中心，代码先算 `low=L-W/2`，再把 `(value-low)/W*255` 截断到 0～255，最后转成整数灰度。区间以下显示黑色，以上显示白色。修改显示范围不会修改 Volume3D 内的数据，也不会改变算法分割阈值。载入底图默认采用全范围；CT 血管按钮只提供 W=700、L=250 的显示预设，不推断数据是否为 HU。
 
@@ -353,7 +345,13 @@ QGraphicsPixmapItem 按水平和垂直轴 spacing 缩放，再适应窗口，让
 
 Mask 文件也由独立 QFutureWatcher 和 QtConcurrent 后台读取，主线程完成几何校验和显示。源文件与 Mask 加载互斥，避免同一次叠加期间底图被替换。重新加载底图或尝试加载另一个 Mask 时先清除旧叠加，失败时明确显示原因。测试检查三方向同一体素的橙色位置、背景不变、开关行为、错位网格拒绝、概率图拒绝及实际 NIfTI Mask 加载。
 
-## 19. 鼠标选取：沿显示变换反向计算索引
+
+
+## 8. 第七步：把鼠标操作转换为种子和 ROI
+
+显示正确后再加入交互。先把 viewport 坐标逆变换为图像坐标，恢复体素索引，再发出选择通知，由窗口回填参数。验证缩放前后能选中同一点，再加入框选。
+
+### 鼠标选取：沿显示变换反向计算索引
 
 实现位于 SliceViewer::voxelAt()、eventFilter()、setSelection() 和 MainWindow 的信号连接。先把鼠标在 viewport 中的位置转换到 scene，再除以该轴 spacing，恢复到图片像素单位。下面是 voxelAt() 的连续关键片段，a 是当前平面的三轴映射，d 是底图尺寸：
 
@@ -374,7 +372,13 @@ MainWindow 接收信号后检查当前任务未运行、原图索引模式已勾
 
 验证时使用非等距 spacing、反向方向矩阵和三个不同切层，模拟真正的 viewport 鼠标事件，检查发出的三维坐标；再验证反向拖框、跨平面收紧 ROI、禁用选取，以及主窗口文本回填和重复点去重。
 
-## 20. VTK 三维显示：几何、渲染与选择分开
+
+
+## 9. 第八步：构建三维视图并接通跨视图定位
+
+三维先准备几何，再在 GUI 线程创建渲染对象。先验证独立显示，再按分支编号连接表格，按世界坐标连接切片。此模块为可选构建。
+
+### VTK 三维显示：几何、渲染与选择分开
 
 新增 `app/gui/ThreeDViewer.hpp/.cpp`。打开结果只记录目录并清除旧对象，用户点击载入后，QtConcurrent 在后台执行 prepare()，读取 Mask 与中心线 CSV，生成 vtkPolyData。QFutureWatcher 返回 GUI 线程后再创建 mapper/actor 并添加到 renderer。切换目录会递增 generation，旧任务即使稍后完成也不能覆盖新目录。线程只传递数据，不在后台操作 OpenGL 窗口。
 
@@ -399,7 +403,7 @@ image 先使用真实 spacing，但保持单位方向和局部原点。体数据
 
 QVTKOpenGLNativeWidget 使用 vtkGenericOpenGLRenderWindow，应用在创建 QApplication 前设置 defaultFormat，遵循 [VTK 官方 Qt 接入说明](https://vtk.org/doc/nightly/html/classQVTKOpenGLNativeWidget.html)。只在可见且上下文有效时渲染；offscreen/minimal 不创建 OpenGL 控件，因此这两种平台可以测试表面边界、物理变换、CSV 校验及表格联动，但不能证明真实显卡渲染或鼠标拾取正常。
 
-## 21. 三维到切片：传世界坐标，不传屏幕位置
+### 三维到切片：传世界坐标，不传屏幕位置
 
 ThreeDViewer::selectBranch() 从选中分支的 vtkPolyData 中取序列中间采样点，发出 branchLocationChanged(x,y,z)。这个点位于中心线路径上，不能用 actor 包围盒中心替代，因为弯曲血管的包围盒中心可能落在血管外。三维拾取后则发送 vtkCellPicker::GetPickPosition() 的实际世界位置；先完成表格回选，再发送实际位置，避免表格的中间采样点覆盖鼠标目标。
 
@@ -424,3 +428,108 @@ worldToIndex 撤销 origin、direction 和 spacing 的变换，round 取最近�
 loadResult() 先读取并验证结果 Mask，再按运行记录读取原始输入和裁剪 ROI。cropVolume 已将裁剪起点转换进新 origin，所以跨视图联动始终使用世界坐标，不重复叠加 ROI 偏移。原图读取失败或几何不符时，明确退回到 Mask 底图；结果文件本身损坏则报告失败。结果页没有连接任何写参数信号，浏览定位不会改变分析配置。
 
 加载器的 generation 随清空或新请求递增，完成回调只接受对应版本；如果加载中又请求另一结果，只保留最新请求，旧结果完成后转去加载最新目录。clear() 同时移除旧图和十字。测试覆盖真实 ROI 裁剪灰度、反向/旋转方向矩阵、三个滑块坐标、原图缺失回退、越界拒绝、快速切换结果，以及整个三维/表格/结果页链路不修改 JobConfig。
+
+
+
+### 切片到三维：复用坐标转换
+
+单向链路成立后再增加反向输入。结果页调用 setReadOnly() 关闭参数编辑，同时开启结果定位交互。eventFilter 接收左键点选，经 voxelAt() 撤销显示变换，得到网格索引；geometry().indexToWorld() 将它转换成 RAS 毫米。先调用本页 focusWorld() 同步三个十字，再发出 worldPointPicked(x,y,z)。
+
+MainWindow 只连接模块接口：
+
+```cpp
+connect(resultSlices_, &SliceViewer::worldPointPicked, this,
+        [this](double x, double y, double z) {
+    threeD_->focusWorld({x, y, z});
+});
+```
+
+ThreeDViewer::focusWorld() 保存定位点；几何准备好后更新黄色球形 actor，将相机位置和焦点平移相同向量，保留旋转与缩放。三维未载入时先缓存，点击“查看三维定位”后启动 load()，后台完成后应用缓存点。setResult() 清除缓存和标记，避免上一例的位置进入下一例。
+
+这里不调用 selectBranch()，也不发出 branchLocationChanged。任意体素中心不一定属于某条中心线，不应替用户推断分支；不向来源回送定位通知，也避免了信号回路。用户主动选择分支时隐藏点标记，回到分支定位。worldPointPicked 只连接展示模块，不接 JobConfig，因此不改种子和 ROI。
+
+验证先用真实 viewport 鼠标事件检查三个平面、非等距 spacing、旋转和反射方向矩阵下的世界坐标，再检查窗口连接、加载前缓存、无效坐标拒绝及参数保持不变。offscreen 测试不创建 OpenGL 上下文，不能代替真实桌面的视觉验收。
+
+## 10. 第九步：沿模块扩展功能并完成交付
+
+算法输入改动沿参数模型、控件、序列化和 CLI 传递；展示需求放在查看器。按影响范围检查行为，最后整理运行依赖与打包目录。
+
+### 怎样给它增加一个参数：用短枝阈值作例子
+
+现有 `prune` 是一条可以完整追踪的参数链。不要马上修改算法；先在源码中找出这六处：
+
+| 层次 | 当前对应代码 | 为什么需要它 |
+| --- | --- | --- |
+| 参数值 | JobConfig::prune | 保存默认值和当前值 |
+| 控件 | number(advancedForm, "prune", ...) | 让用户输入数值并理解单位 mm |
+| 读取/回填 | config() / setConfig() | 运行时读到新值，载入配置时显示正确值 |
+| JSON | toJson / fromJson 的 prune | 保存和恢复该值 |
+| 参数列表 | arguments 中的 --prune-mm | 把值传到 CLI，调用核心校验 |
+| 算法入口 | RunOptions 与 pipeline.cpp | CLI 接受值并执行短枝修剪 |
+
+新加真正的算法参数时，照这条链逐层补齐，再加有意义的往返或行为验证。只加输入框不会改变算法；只改 arguments 而不补 setConfig，会让载入配置后的界面值不一致。
+纯显示开关则不需要经过 CLI：例如显示/隐藏日志，只需要改变日志控件的可见性。先判断新需求属于“显示行为”还是“算法输入”，再决定放在哪一层。
+
+### CMake 和打包分别解决什么
+
+编译阶段需要头文件、链接库和 moc；运行阶段需要 Qt/编译器 DLL、插件及算法 EXE。这是两组不同的问题。
+下面摘取构建中的关键句，省略源文件列表等上下文：
+
+```cmake
+find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets SvgWidgets Concurrent)
+set_target_properties(medvessel_desktop PROPERTIES AUTOMOC ON)
+target_link_libraries(medvessel_desktop PUBLIC
+    medvessel Qt6::Widgets Qt6::SvgWidgets Qt6::Concurrent)
+add_executable(medvessel_gui WIN32 app/gui/main.cpp)
+target_link_libraries(medvessel_gui PRIVATE medvessel_desktop)
+```
+
+`medvessel_desktop` 收纳可被程序和测试共用的桌面实现，main.cpp 则只放应用入口。它是静态目标不代表整个应用完全静态：Qt 在本机仍以动态 DLL 形式加载。
+AUTOMOC 处理带 Q_OBJECT 的类；忘记启用常会遇到元对象/虚表等链接错误。Widgets 提供窗口控件，SvgWidgets 提供 SVG 图元相关组件及其依赖。Windows 的 WIN32 标志用于 GUI 子系统，不表示“只能生成 32 位程序”。
+
+`start_gui.ps1` 负责开发环境下的 DLL 与 Qt 插件路径。`package_gui.ps1` 则把可运行文件集中到 build/desktop，用 windeployqt 收集 Qt 运行依赖，并检查补齐本机 UCRT64 的依赖链。
+qwindows.dll 是平台插件的一部分；找到 Qt6Widgets.dll 不代表已经找到平台插件。qt.conf 让包内插件路径可定位。CLI 的 UTF-8 manifest 解决现代 Windows 下窄字符接口与中文路径的代码页约定，不是修改用户系统设置。
+打包还包含合成示例和单文件学习网页。当前是本机可运行目录，不是跨系统安装器；不能把整个目录简化为只发 medvessel_gui.exe。
+
+### 调试时断点放哪里
+
+| 现象 | 先看哪里 | 重点检查 |
+| --- | --- | --- |
+| 按钮点了没反应 | clicked 的连接、startAnalysis | 是否连接、是否按钮禁用、是否校验提前返回 |
+| 改参数但结果像没变 | config、arguments、gui_run.json | 控件 key、读回值、真实参数数组 |
+| 原图种子越界 | JobConfig::arguments | ROI 起点、勾选坐标模式、是否重复裁剪 |
+| 任务一直忙碌 | finished / errorOccurred / complete | 是否收到结束、是否遗漏失败分支、日志最后阶段 |
+| 图表还是上一例 | openResult | 新结果是否通过解析、是否只打开了参数而未打开结果 |
+| EXE 在开发机能跑，移动后失败 | DLL、platforms、qt.conf | 是否搬走完整目录、是否混入 Anaconda Qt 5 插件 |
+
+测试入口是 [gui_tests.cpp](../tests/gui_tests.cpp)。QSignalSpy 记录信号，QTRY_COMPARE/QTRY_VERIFY 在等待条件时让事件循环继续工作；这与在按钮回调中阻塞等待进程不是一回事。
+现有测试启动真实合成 CLI，并验证结果、配置、中文及空格路径、失败和取消。offscreen 表示无可见桌面平台，可用于自动检查，并不等于验证了不同屏幕 DPI 与所有真人操作。
+
+### 带着源码做四个小练习
+
+这些练习是学习建议，仓库没有预先加入这些功能，避免把“待练习”误认为当前已实现。
+
+1. 修改标题和开始按钮文案。只改 MainWindow 的控件文字，确认输出文件没有变化，体会显示层与算法层的边界。
+2. 加一个“隐藏/显示日志”开关。用 QCheckBox::toggled 连接日志容器的 setVisible；注意只隐藏文本框还是整个带标题的容器，布局会如何变化。
+3. 给 run_ 的 enabled 状态加断点：开始时变为 false，结束后变为 true。沿 runningChanged 观察状态通知如何影响多个控件，而不是在每个错误分支到处手动解锁。
+4. 将保存后的配置载入，再比较所有参数。重点检查 ROI、种子坐标模式、灰度空值和线程数，理解“控件状态 ↔ 参数值 ↔ JSON”是否完整往返。
+
+如果练习只改变文字或布局，构建 GUI 并观察即可；如果改了参数链、任务状态或文件读写，再运行对应 GUI 测试。不要用截图看起来正常来代替对任务状态的检查。
+
+
+
+## 11. 回到源码：独立复述并重建整个工作台
+
+尝试独立画出各模块的输入输出，再按增量表搭建最小工作台。追踪一个字段从控件到 CLI，以及一个世界坐标从三维到切片的完整路径。
+
+### 最后用一张卡片回顾
+
+- 界面怎么搭：Widgets 是控件，Layout 和 Splitter 决定排布，QSS 决定外观。
+- 点击怎么走：clicked → connect 的接收函数 → config → JobConfig → AnalysisJob::start。
+- 为什么能响应：事件循环继续工作，耗时算法在独立 CLI 进程里执行。
+- 怎么知道进度：读取字节，按行缓冲解析阶段，再通过信号更新窗口。
+- 怎么确认完成：进程正常退出、必要输出检查、写最终状态；中止目录不当完成结果。
+- 怎么显示结果：投影页的 SVG 进入 Graphics View，CSV 进入 Model/View；新增 SliceViewer 显示体数据切片，可选 ThreeDViewer 显示三维表面和中心线。
+- 怎么扩展：显示需求放窗口，参数换算放 JobConfig，进程生命周期放 AnalysisJob，算法仍放核心/CLI。
+
+现在按 `main.cpp → MainWindow 构造与连接 → config/startAnalysis → JobConfig::arguments → AnalysisJob → openResult` 的顺序读一遍源码，你应该能把整个桌面入口串起来。

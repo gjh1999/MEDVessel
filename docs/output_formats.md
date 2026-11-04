@@ -121,3 +121,10 @@ volume = np.fromfile(metadata_path.parent / metadata["raw_file"], dtype="<f4").r
 
 raw 为小端 float32、x 最快；JSON 声明 dtype、文件名、x/y/z 尺寸、spacing_mm、origin_ras_mm 和按行 direction。
 不能仅凭 raw 数组的形状恢复患者物理坐标。
+## 新增实验分割与标准指标
+
+启用 `--growth-band-mm` 后导出 `core.nii.gz`，记录严格种子核心。run.json 新增 `growth_band_mm`、`seed_core_ratio`、`effective_core_threshold`；默认不启用核心补边时有效核心阈值为 null。
+
+论文式统一指标使用 `tools/evaluate_standard.py` 生成 `metrics_standard.json`，包括 Dice、HD95 mm、ASSD mm、Lee 骨架 clDice，另有 precision / recall、计算配置和依赖版本。输入为 `medvessel_export` 的 JSON/raw 前缀，几何不一致直接拒绝。距离不是中心线距离；空结果的距离记 null，汇总必须报告失败数。
+
+历史 metrics.json 的 C++ HD95 / clDice 保留原定义，不能与新版同名分数混在一起平均。完整定义及重算结果见 [统一评价报告](evaluation_and_industry.html)。

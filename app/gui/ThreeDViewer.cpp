@@ -1,10 +1,9 @@
 #include "ThreeDViewer.hpp"
 #include "JobConfig.hpp"
 #include "io/Nifti.hpp"
-#include <QtWidgets>
-#include <QtConcurrent>
-#include <QFutureWatcher>
 #include <QJsonArray>
+#include <QtWidgets>
+#include <QtConcurrent/QtConcurrentRun>
 #include <QVTKOpenGLNativeWidget.h>
 #include <QVTKInteractor.h>
 #include <vtkActor.h>
@@ -16,87 +15,90 @@
 #include <vtkFlyingEdges3D.h>
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkImageData.h>
+#include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkMatrix4x4.h>
 #include <vtkNew.h>
 #include <vtkPoints.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkPolyDataNormals.h>
 #include <vtkProperty.h>
-#include <vtkRenderer.h>
 #include <vtkSphereSource.h>
+#include <vtkRenderer.h>
+#include <vtkRenderWindowInteractor.h>
 #include <vtkTransform.h>
 #include <vtkTransformPolyDataFilter.h>
-#include <algorithm>
-#include <limits>
-
+#include <climits>
+#include <cstring>
 namespace medvessel::desktop {
-ThreeDViewer::Scene ThreeDViewer::prepare(const QString& directory){
-    Scene scene;
-    try{
-        const auto record=readJson(QDir(directory).filePath("run.json"));auto mask=readNifti(QDir(directory).filePath("mask.nii.gz").toUtf8().toStdString());
-        auto d=mask.dimensions();auto dims=record["dimensions"].toArray(),spacing=record["spacing_mm"].toArray();
-        if(dims.size()!=3||spacing.size()!=3)throw std::runtime_error("结果缺少网格信息");
-        for(int i=0;i<3;++i)if(d[i]>std::size_t(std::numeric_limits<int>::max()-2)||dims[i].toDouble()!=double(d[i])||!std::isfinite(spacing[i].toDouble())||std::abs(spacing[i].toDouble()-mask.geometry().spacing[i])>1e-5)throw std::runtime_error("Mask 与运行记录网格不符");
-        for(float v:mask.data())if(!std::isfinite(v)||(v!=0&&v!=1))throw std::runtime_error("Mask 必须是有限二值数据");
-        scene.geometry=mask.geometry();scene.dimensions=d;
-        vtkNew<vtkImageData> image;image->SetDimensions(int(d[0])+2,int(d[1])+2,int(d[2])+2);const auto& g=mask.geometry();image->SetSpacing(g.spacing.data());image->SetOrigin(-g.spacing[0],-g.spacing[1],-g.spacing[2]);image->AllocateScalars(VTK_UNSIGNED_CHAR,1);
-        for(int z=0;z<int(d[2])+2;++z)for(int y=0;y<int(d[1])+2;++y)for(int x=0;x<int(d[0])+2;++x)*static_cast<unsigned char*>(image->GetScalarPointer(x,y,z))=(x>0&&y>0&&z>0&&x<=int(d[0])&&y<=int(d[1])&&z<=int(d[2]))?static_cast<unsigned char>(mask.at(x-1,y-1,z-1)):0;
+ThreeDScene ThreeDViewer::prepare(const QString& directory) {
+    ThreeDScene scene;
+    try {
+        QDir dir(directory);auto run=readJson(dir.filePath("run.json"));
+        const int count=run["branches"].toInt(-1);if(count<0)throw std::runtime_error("run.json 缺少分支数量");
+        auto mask=readNifti(dir.filePath("mask.nii.gz").toUtf8().toStdString());auto d=mask.dimensions();auto g=mask.geometry();
+        auto dims=run["dimensions"].toArray(),spacing=run["spacing_mm"].toArray();
+        if(run["schema_version"].toInt()!=1||dims.size()!=3||spacing.size()!=3)throw std::runtime_error("运行记录缺少网格信息");
+        for(int a=0;a<3;++a)if(dims[a].toDouble(-1)!=double(d[a])||std::abs(spacing[a].toDouble(-1)-g.spacing[a])>1e-5)throw std::runtime_error("Mask 网格与运行记录不符");
+        for(auto size:d)if(size>INT_MAX-2)throw std::runtime_error("Mask 尺寸超过 VTK 范围");
+        // Pad one background voxel on each side so surfaces close at volume edges.
+        vtkNew<vtkImageData> image;image->SetDimensions(int(d[0])+2,int(d[1])+2,int(d[2])+2);image->SetSpacing(g.spacing.data());image->SetOrigin(-g.spacing[0],-g.spacing[1],-g.spacing[2]);image->AllocateScalars(VTK_UNSIGNED_CHAR,1);
+        std::memset(image->GetScalarPointer(),0,static_cast<std::size_t>(image->GetNumberOfPoints()));
+        for(std::size_t z=0;z<d[2];++z)for(std::size_t y=0;y<d[1];++y)for(std::size_t x=0;x<d[0];++x){float v=mask.at(x,y,z);if(!std::isfinite(v)||(v!=0&&v!=1))throw std::runtime_error("Mask 必须为有限的 0/1 数据");*static_cast<unsigned char*>(image->GetScalarPointer(int(x)+1,int(y)+1,int(z)+1))=static_cast<unsigned char>(v);}
         vtkNew<vtkFlyingEdges3D> contour;contour->SetInputData(image);contour->SetValue(0,.5);
         vtkNew<vtkMatrix4x4> matrix;matrix->Identity();for(int i=0;i<3;++i){for(int j=0;j<3;++j)matrix->SetElement(i,j,g.direction[i*3+j]);matrix->SetElement(i,3,g.origin[i]);}
-        vtkNew<vtkTransform> transform;transform->SetMatrix(matrix);vtkNew<vtkTransformPolyDataFilter> world;world->SetTransform(transform);world->SetInputConnection(contour->GetOutputPort());
-        vtkNew<vtkPolyDataNormals> normals;normals->SetInputConnection(world->GetOutputPort());normals->ConsistencyOn();normals->AutoOrientNormalsOn();normals->Update();scene.surface=vtkSmartPointer<vtkPolyData>::New();scene.surface->DeepCopy(normals->GetOutput());
-        QFile csv(QDir(directory).filePath("centerline.csv"));if(!csv.open(QIODevice::ReadOnly))throw std::runtime_error("无法读取 centerline.csv");
-        auto header=QString::fromUtf8(csv.readLine()).trimmed().split(',');const QStringList required{"branch_id","point_id","x_ras_mm","y_ras_mm","z_ras_mm"};std::array<int,5> columns{};for(int i=0;i<5;++i){columns[i]=header.indexOf(required[i]);if(columns[i]<0)throw std::runtime_error("中心线 CSV 表头不完整");}
-        QMap<int,QMap<int,Point3D>> points;
-        while(!csv.atEnd()){auto line=QString::fromUtf8(csv.readLine()).trimmed();if(line.isEmpty())continue;auto fields=line.split(',');if(fields.size()!=header.size())throw std::runtime_error("中心线 CSV 列数错误");bool ok;int branch=fields[columns[0]].toInt(&ok);if(!ok||branch<0)throw std::runtime_error("无效分支 ID");int point=fields[columns[1]].toInt(&ok);if(!ok||point<0||points[branch].contains(point))throw std::runtime_error("无效或重复点 ID");Point3D p{};for(int i=0;i<3;++i){p[i]=fields[columns[i+2]].toDouble(&ok);if(!ok||!std::isfinite(p[i]))throw std::runtime_error("中心线含无效坐标");}points[branch][point]=p;}
-        if(record["branches"].toInt(-1)!=points.size())throw std::runtime_error("分支数量与运行记录不一致");
-        for(auto it=points.cbegin();it!=points.cend();++it){vtkNew<vtkPoints> vertices;vertices->SetDataTypeToDouble();int expected=0;for(auto p=it->cbegin();p!=it->cend();++p){if(p.key()!=expected++)throw std::runtime_error("中心线点 ID 不连续");vertices->InsertNextPoint(p.value().data());}vtkNew<vtkCellArray> lines;lines->InsertNextCell(vertices->GetNumberOfPoints());for(vtkIdType i=0;i<vertices->GetNumberOfPoints();++i)lines->InsertCellPoint(i);auto poly=vtkSmartPointer<vtkPolyData>::New();poly->SetPoints(vertices);poly->SetLines(lines);scene.branches[it.key()]=poly;}
-    }catch(const std::exception& e){scene={};scene.error=QString::fromUtf8(e.what());}return scene;
+        vtkNew<vtkTransform> transform;transform->SetMatrix(matrix);vtkNew<vtkTransformPolyDataFilter> world;world->SetTransform(transform);world->SetInputConnection(contour->GetOutputPort());world->Update();
+        vtkNew<vtkPolyDataNormals> normals;normals->SetInputConnection(world->GetOutputPort());normals->AutoOrientNormalsOn();normals->ConsistencyOn();normals->SplittingOff();normals->Update();
+        scene.surface=vtkSmartPointer<vtkPolyData>::New();scene.surface->DeepCopy(normals->GetOutput());
+        QFile csv(dir.filePath("centerline.csv"));if(!csv.open(QIODevice::ReadOnly))throw std::runtime_error("无法读取 centerline.csv");
+        QTextStream stream(&csv);if(stream.readLine().trimmed()!="branch_id,point_id,x_ras_mm,y_ras_mm,z_ras_mm")throw std::runtime_error("中心线表头不支持");
+        QMap<int,vtkSmartPointer<vtkPoints>> points;
+        while(!stream.atEnd()) {auto line=stream.readLine().trimmed();if(line.isEmpty())continue;auto cells=line.split(',');if(cells.size()!=5)throw std::runtime_error("中心线行格式错误");bool ok=false;int id=cells[0].toInt(&ok);if(!ok||id<0||id>=count)throw std::runtime_error("中心线分支 ID 无效");int index=cells[1].toInt(&ok);if(!ok||index<0)throw std::runtime_error("中心线点 ID 无效");if(!points.contains(id)){points[id]=vtkSmartPointer<vtkPoints>::New();points[id]->SetDataTypeToDouble();}if(index!=points[id]->GetNumberOfPoints())throw std::runtime_error("中心线点 ID 不连续或重复");double p[3];for(int a=0;a<3;++a){p[a]=cells[a+2].toDouble(&ok);if(!ok||!std::isfinite(p[a]))throw std::runtime_error("中心线坐标无效");}points[id]->InsertNextPoint(p);}
+        if(points.size()!=count)throw std::runtime_error("中心线分支数量与运行记录不符");
+        for(auto it=points.cbegin();it!=points.cend();++it){auto data=vtkSmartPointer<vtkPolyData>::New();data->SetPoints(it.value());vtkNew<vtkCellArray> lines;const auto n=it.value()->GetNumberOfPoints();if(n<2)throw std::runtime_error("中心线分支点数不足");lines->InsertNextCell(n);for(vtkIdType i=0;i<n;++i)lines->InsertCellPoint(i);data->SetLines(lines);scene.branches[it.key()]=data;}
+    }catch(const std::exception& e){scene.surface=nullptr;scene.branches.clear();scene.error=QString::fromUtf8(e.what());}
+    return scene;
 }
-ThreeDViewer::ThreeDViewer(QWidget* parent):QWidget(parent){
-    auto* layout=new QVBoxLayout(this);auto* bar=new QHBoxLayout;auto* loadButton=new QPushButton("载入三维结果");auto* reset=new QPushButton("重置视角");locate_=new QPushButton("定位到结果切片");locate_->setObjectName("locateSlices");locate_->setEnabled(false);bar->addWidget(loadButton);bar->addWidget(reset);bar->addWidget(locate_);layout->addLayout(bar);
-    auto* surface=new QCheckBox("显示表面");surface->setChecked(true);auto* opacity=new QSlider(Qt::Horizontal);opacity->setRange(0,100);opacity->setValue(35);auto* appearance=new QHBoxLayout;appearance->addWidget(surface);appearance->addWidget(new QLabel("表面透明度"));appearance->addWidget(opacity);layout->addLayout(appearance);
-    const auto platform=QGuiApplication::platformName();if(platform!="offscreen"&&platform!="minimal"){
-        gl_=new QVTKOpenGLNativeWidget;layout->addWidget(gl_,1);vtkNew<vtkGenericOpenGLRenderWindow> window;gl_->setRenderWindow(window);renderer_=vtkSmartPointer<vtkRenderer>::New();renderer_->SetBackground(.04,.08,.12);window->AddRenderer(renderer_);gl_->installEventFilter(this);
-        vtkNew<vtkAxesActor> axes;axes->SetXAxisLabelText("R");axes->SetYAxisLabelText("A");axes->SetZAxisLabelText("S");
-        orientation_=vtkSmartPointer<vtkOrientationMarkerWidget>::New();orientation_->SetOrientationMarker(axes);orientation_->SetInteractor(gl_->interactor());orientation_->SetViewport(0,0,.2,.2);orientation_->SetEnabled(1);orientation_->InteractiveOff();
-    }else layout->addWidget(new QLabel("当前平台仅验证三维几何与联动，不创建 OpenGL 窗口"));
-    status_=new QLabel("打开结果后载入三维血管 · 世界坐标 R/A/S（mm）");status_->setWordWrap(true);layout->addWidget(status_);
-    connect(loadButton,&QPushButton::clicked,this,&ThreeDViewer::load);connect(reset,&QPushButton::clicked,this,[this]{if(renderer_){renderer_->ResetCamera();render();}});connect(locate_,&QPushButton::clicked,this,&ThreeDViewer::locateSlicesRequested);
-    connect(surface,&QCheckBox::toggled,this,[this](bool visible){if(surfaceActor_){surfaceActor_->SetVisibility(visible);render();}});connect(opacity,&QSlider::valueChanged,this,[this](int value){if(surfaceActor_){surfaceActor_->GetProperty()->SetOpacity(value/100.);render();}});
-    setProperty("surfaceVisible",true);setProperty("surfaceOpacity",.35);
-    connect(surface,&QCheckBox::toggled,this,[this](bool value){setProperty("surfaceVisible",value);});connect(opacity,&QSlider::valueChanged,this,[this](int value){setProperty("surfaceOpacity",value/100.);});
+ThreeDViewer::ThreeDViewer(QWidget* parent):QWidget(parent) {
+    auto* root=new QVBoxLayout(this);auto* row=new QHBoxLayout;auto* loadButton=new QPushButton("载入三维结果");loadButton->setObjectName("load3D");auto* reset=new QPushButton("重置视角");row->addWidget(loadButton);row->addWidget(reset);
+    auto* visible=new QCheckBox("显示血管表面");visible->setChecked(true);row->addWidget(visible);auto* opacity=new QSlider(Qt::Horizontal);opacity->setRange(0,100);opacity->setValue(25);row->addWidget(new QLabel("表面不透明度"));row->addWidget(opacity);root->addLayout(row);
+    status_=new QLabel("打开分析结果后，点击载入三维结果。坐标为 RAS 毫米；左键旋转，滚轮缩放，单击中心线选择分支。");status_->setWordWrap(true);root->addWidget(status_);
+    locate_=new QPushButton("定位到结果切片");locate_->setObjectName("locateSlices");locate_->setEnabled(false);root->addWidget(locate_);connect(locate_,&QPushButton::clicked,this,&ThreeDViewer::locateSlicesRequested);
+    renderer_=vtkSmartPointer<vtkRenderer>::New();renderer_->SetBackground(.045,.075,.11);window_=vtkSmartPointer<vtkGenericOpenGLRenderWindow>::New();window_->AddRenderer(renderer_);window_->SetMultiSamples(0);
+    // Qt's offscreen platform cannot create QOpenGLWidget contexts. Geometry and linkage remain testable.
+    if(QGuiApplication::platformName()!="offscreen"&&QGuiApplication::platformName()!="minimal") {view_=new QVTKOpenGLNativeWidget;view_->setObjectName("vtkView");view_->setRenderWindow(window_);view_->installEventFilter(this);root->addWidget(view_,1);vtkNew<vtkInteractorStyleTrackballCamera> style;view_->interactor()->SetInteractorStyle(style);}
+    else root->addWidget(new QLabel("当前 Qt 平台不提供 OpenGL 窗口；仅验证几何与分支联动。"),1);
+    vtkNew<vtkSphereSource> marker;marker->SetRadius(.5);marker->SetThetaResolution(20);marker->SetPhiResolution(20);
+    vtkNew<vtkPolyDataMapper> markerMapper;markerMapper->SetInputConnection(marker->GetOutputPort());
+    focusMarker_=vtkSmartPointer<vtkActor>::New();focusMarker_->SetMapper(markerMapper);focusMarker_->GetProperty()->SetColor(1,1,0);focusMarker_->PickableOff();focusMarker_->VisibilityOff();
+    surface_=vtkSmartPointer<vtkActor>::New();surface_->GetProperty()->SetColor(.6,.8,.85);surface_->GetProperty()->SetOpacity(.25);surface_->PickableOff();
+    connect(loadButton,&QPushButton::clicked,this,&ThreeDViewer::load);connect(reset,&QPushButton::clicked,this,[this]{renderer_->ResetCamera();render();});
+    connect(visible,&QCheckBox::toggled,this,[this](bool checked){surface_->SetVisibility(checked);render();});connect(opacity,&QSlider::valueChanged,this,[this](int value){surface_->GetProperty()->SetOpacity(value/100.);render();});
+    connect(&watcher_,&QFutureWatcher<ThreeDScene>::finished,this,[this]{
+        const auto requested=watcher_.property("generation").toULongLong();if(requested!=generation_)return;auto scene=watcher_.result();
+        if(!scene.error.isEmpty()){status_->setText("三维载入失败："+scene.error);emit loaded(false);return;}
+        vtkNew<vtkPolyDataMapper> mapper;mapper->SetInputData(scene.surface);mapper->ScalarVisibilityOff();surface_->SetMapper(mapper);renderer_->AddActor(surface_);
+        for(auto it=scene.branches.cbegin();it!=scene.branches.cend();++it){vtkNew<vtkPolyDataMapper> line;line->SetInputData(it.value());auto actor=vtkSmartPointer<vtkActor>::New();actor->SetMapper(line);actor->GetProperty()->SetColor(.15,.95,.8);actor->GetProperty()->SetLineWidth(3);actors_[it.key()]=actor;renderer_->AddActor(actor);}
+        renderer_->GetActiveCamera()->SetPosition(1,-1,.7);renderer_->GetActiveCamera()->SetFocalPoint(0,0,0);renderer_->GetActiveCamera()->SetViewUp(0,0,1);renderer_->ResetCamera();auto pendingFocus=focusWorld_;if(pendingFocus){QSignalBlocker blocker(this);selectBranch(selected_);}else selectBranch(selected_);if(pendingFocus)focusWorld(*pendingFocus);status_->setText(QString("RAS 毫米 · %1 条中心线分支 · 表格选中会高亮并定位；单击中心线可回选表格。表面为 Mask 的 0.5 等值面。").arg(actors_.size()));render();emit loaded(true);
+    });
 }
-void ThreeDViewer::setResult(const QString& directory){++generation_;directory_=directory;scene_={};actors_.clear();surfaceActor_=nullptr;targetActor_=nullptr;selected_=-1;locate_->setEnabled(false);if(renderer_)renderer_->RemoveAllViewProps();emit locationCleared();render();}
-void ThreeDViewer::load(){
-    const auto directory=directory_;setResult(directory);const auto token=generation_;status_->setText("正在构建三维几何…");auto* watcher=new QFutureWatcher<Scene>(this);
-    connect(watcher,&QFutureWatcher<Scene>::finished,this,[this,watcher,token]{auto scene=watcher->result();watcher->deleteLater();if(token!=generation_)return;if(!scene.error.isEmpty()){status_->setText(scene.error);emit loaded(false);return;}scene_=std::move(scene);
-        if(renderer_){auto add=[this](vtkPolyData* data){vtkNew<vtkPolyDataMapper> mapper;mapper->SetInputData(data);mapper->ScalarVisibilityOff();auto actor=vtkSmartPointer<vtkActor>::New();actor->SetMapper(mapper);renderer_->AddActor(actor);return actor;};surfaceActor_=add(scene_.surface);surfaceActor_->GetProperty()->SetColor(.85,.3,.2);surfaceActor_->GetProperty()->SetAmbient(.2);surfaceActor_->GetProperty()->SetOpacity(property("surfaceOpacity").toDouble());surfaceActor_->SetVisibility(property("surfaceVisible").toBool());
-            for(auto it=scene_.branches.cbegin();it!=scene_.branches.cend();++it){auto actor=add(it.value());actor->GetProperty()->SetColor(.1,.9,.8);actor->GetProperty()->SetLineWidth(3);actor->GetProperty()->LightingOff();actors_[it.key()]=actor;}
-            if(scene_.surface->GetNumberOfPoints()>0){double bounds[6];scene_.surface->GetBounds(bounds);Point3D center{};double extent=1;for(int i=0;i<3;++i){center[i]=(bounds[2*i]+bounds[2*i+1])/2;extent=std::max(extent,bounds[2*i+1]-bounds[2*i]);}auto* camera=renderer_->GetActiveCamera();camera->SetFocalPoint(center.data());camera->SetPosition(center[0]+extent*1.5,center[1]-extent*1.5,center[2]+extent);camera->SetViewUp(0,0,1);}
-            renderer_->ResetCamera();render();}
-        status_->setText(QString("已载入 %1 条分支 · 单击中心线选取，拖动旋转").arg(scene_.branches.size()));emit loaded(true);});
-    watcher->setFuture(QtConcurrent::run([directory]{return prepare(directory);}));
+ThreeDViewer::~ThreeDViewer()=default;
+void ThreeDViewer::render(){if(view_&&view_->isVisible()&&view_->isValid()){
+    if(!orientation_){vtkNew<vtkAxesActor> axes;axes->SetXAxisLabelText("R");axes->SetYAxisLabelText("A");axes->SetZAxisLabelText("S");orientation_=vtkSmartPointer<vtkOrientationMarkerWidget>::New();orientation_->SetOrientationMarker(axes);orientation_->SetInteractor(view_->interactor());orientation_->SetViewport(0,0,.2,.2);orientation_->SetEnabled(1);orientation_->InteractiveOff();}
+    window_->Render();
+}}
+void ThreeDViewer::showEvent(QShowEvent* event){QWidget::showEvent(event);QTimer::singleShot(0,this,[this]{render();});}
+void ThreeDViewer::setResult(const QString& directory){focusWorld_.reset();focusMarker_->VisibilityOff();++generation_;directory_=directory;locate_->setEnabled(false);actors_.clear();renderer_->RemoveAllViewProps();selected_=-1;status_->setText(directory.isEmpty()?"尚无结果":"三维结果待载入："+directory);render();}
+void ThreeDViewer::load(){if(directory_.isEmpty()||watcher_.isRunning())return;renderer_->RemoveAllViewProps();actors_.clear();locate_->setEnabled(false);render();status_->setText("正在后台构建三维几何…");watcher_.setProperty("generation",QVariant::fromValue(generation_));const auto directory=directory_;watcher_.setFuture(QtConcurrent::run([directory]{return prepare(directory);}));}
+void ThreeDViewer::selectBranch(int id){if(actors_.contains(id)){focusWorld_.reset();focusMarker_->VisibilityOff();}selected_=id;locate_->setEnabled(actors_.contains(id));if(!actors_.contains(id)&&!focusWorld_)emit locationCleared();for(auto it=actors_.begin();it!=actors_.end();++it){const bool selected=it.key()==id;it.value()->GetProperty()->SetColor(selected?1.:.15,selected?.45:.95,selected?.1:.8);it.value()->GetProperty()->SetLineWidth(selected?6:3);}if(actors_.contains(id)){auto* data=actors_[id]->GetMapper()->GetInput();double sample[3];data->GetPoint(data->GetNumberOfPoints()/2,sample);emit branchLocationChanged(sample[0],sample[1],sample[2]);auto* camera=renderer_->GetActiveCamera();const double* center=actors_[id]->GetCenter();double focal[3];camera->GetFocalPoint(focal);double pos[3];camera->GetPosition(pos);for(int a=0;a<3;++a)pos[a]+=center[a]-focal[a];camera->SetFocalPoint(center);camera->SetPosition(pos);renderer_->ResetCameraClippingRange();}render();}
+bool ThreeDViewer::focusWorld(const Point3D& world){
+    for(double value:world)if(!std::isfinite(value))return false;
+    if(directory_.isEmpty())return false;
+    focusWorld_=world;
+    if(!renderer_->HasViewProp(surface_))return true;
+    focusMarker_->SetPosition(world[0],world[1],world[2]);focusMarker_->VisibilityOn();renderer_->AddActor(focusMarker_);
+    auto* camera=renderer_->GetActiveCamera();double focal[3],position[3];camera->GetFocalPoint(focal);camera->GetPosition(position);
+    for(int a=0;a<3;++a)position[a]+=world[a]-focal[a];
+    camera->SetFocalPoint(world.data());camera->SetPosition(position);renderer_->ResetCameraClippingRange();render();return true;
 }
-void ThreeDViewer::render(){if(gl_&&gl_->isVisible()&&gl_->isValid())gl_->renderWindow()->Render();}
-void ThreeDViewer::moveFocus(const Point3D& p){
-    if(renderer_){auto* camera=renderer_->GetActiveCamera();double old[3],position[3];camera->GetFocalPoint(old);camera->GetPosition(position);camera->SetFocalPoint(p.data());camera->SetPosition(position[0]+p[0]-old[0],position[1]+p[1]-old[1],position[2]+p[2]-old[2]);renderer_->ResetCameraClippingRange();}render();
-}
-void ThreeDViewer::selectBranch(int id){
-    if(targetActor_)targetActor_->VisibilityOff();
-    selected_=scene_.branches.contains(id)?id:-1;for(auto it=actors_.cbegin();it!=actors_.cend();++it){auto* p=it.value()->GetProperty();if(it.key()==selected_){p->SetColor(1,.5,0);p->SetLineWidth(6);}else{p->SetColor(.1,.9,.8);p->SetLineWidth(3);}}
-    locate_->setEnabled(selected_>=0);if(selected_<0){emit locationCleared();render();return;}auto poly=scene_.branches[selected_];if(poly->GetNumberOfPoints()==0)return;Point3D point{};poly->GetPoint(poly->GetNumberOfPoints()/2,point.data());moveFocus(point);emit branchLocationChanged(point[0],point[1],point[2]);
-}
-bool ThreeDViewer::focusWorld(const Point3D& world,QString* error){
-    auto fail=[&](const QString& message){if(error)*error=message;status_->setText(message);return false;};for(double v:world)if(!std::isfinite(v))return fail("定位坐标无效");if(!scene_.surface)return fail("请先载入三维结果");
-    auto index=scene_.geometry.worldToIndex(world);
-    for(int i=0;i<3;++i)if(index[i]<-1e-3||index[i]>double(scene_.dimensions[i]-1)+1e-3)return fail("定位坐标超出结果网格");
-    // A separate marker preserves the selected branch and avoids a feedback loop.
-    if(renderer_){if(!targetActor_){vtkNew<vtkSphereSource> sphere;sphere->SetRadius(.5);sphere->SetThetaResolution(16);sphere->SetPhiResolution(16);vtkNew<vtkPolyDataMapper> mapper;mapper->SetInputConnection(sphere->GetOutputPort());targetActor_=vtkSmartPointer<vtkActor>::New();targetActor_->SetMapper(mapper);targetActor_->GetProperty()->SetColor(1,1,0);targetActor_->PickableOff();renderer_->AddActor(targetActor_);}targetActor_->SetPosition(world[0],world[1],world[2]);targetActor_->VisibilityOn();}moveFocus(world);status_->setText(QString("切片定位 RAS (%1, %2, %3) mm").arg(world[0]).arg(world[1]).arg(world[2]));return true;
-}
-bool ThreeDViewer::eventFilter(QObject* object,QEvent* event){
-    if(object==gl_&&event->type()==QEvent::MouseButtonPress){auto* mouse=static_cast<QMouseEvent*>(event);if(mouse->button()==Qt::LeftButton)press_=mouse->position().toPoint();}
-    if(object==gl_&&event->type()==QEvent::MouseButtonRelease){auto* mouse=static_cast<QMouseEvent*>(event);auto point=mouse->position().toPoint();if(mouse->button()==Qt::LeftButton&&(point-press_).manhattanLength()<=4&&renderer_){vtkNew<vtkCellPicker> picker;picker->PickFromListOn();picker->SetTolerance(.015);for(const auto& actor:actors_)picker->AddPickList(actor);double ratio=gl_->devicePixelRatioF();if(picker->Pick(point.x()*ratio,(gl_->height()-1-point.y())*ratio,0,renderer_)){for(auto it=actors_.cbegin();it!=actors_.cend();++it)if(it.value()==picker->GetActor()){emit branchPicked(it.key());selectBranch(it.key());auto* p=picker->GetPickPosition();emit branchLocationChanged(p[0],p[1],p[2]);break;}}}}
-    return QWidget::eventFilter(object,event);
-}
+bool ThreeDViewer::eventFilter(QObject* object,QEvent* event){if(object==view_){if(event->type()==QEvent::MouseButtonPress)press_=static_cast<QMouseEvent*>(event)->position().toPoint();if(event->type()==QEvent::MouseButtonRelease){auto* mouse=static_cast<QMouseEvent*>(event);if(mouse->button()==Qt::LeftButton&&(mouse->position().toPoint()-press_).manhattanLength()<4){vtkNew<vtkCellPicker> picker;picker->SetTolerance(.015);picker->PickFromListOn();for(auto actor:actors_)picker->AddPickList(actor);double ratio=view_->devicePixelRatioF();picker->Pick(mouse->position().x()*ratio,(view_->height()-1-mouse->position().y())*ratio,0,renderer_);for(auto it=actors_.cbegin();it!=actors_.cend();++it)if(it.value()==picker->GetActor()){selectBranch(it.key());emit branchPicked(it.key());const double* picked=picker->GetPickPosition();emit branchLocationChanged(picked[0],picked[1],picked[2]);break;}}}}return QWidget::eventFilter(object,event);}
 }

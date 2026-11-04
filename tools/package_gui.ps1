@@ -45,6 +45,16 @@ try {
     $docs = Join-Path $destination 'docs'
     New-Item -ItemType Directory -Path $docs -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'docs/medvessel_learning_guide.html') -Destination $docs -Force
+    $researchReport = Join-Path $repositoryRoot 'docs/traditional_coronary_report.html'
+    if (Test-Path -LiteralPath $researchReport) {
+        Copy-Item -LiteralPath $researchReport -Destination $docs -Force
+    }
+    foreach ($reportName in @('segmentation_optimization.html', 'evaluation_and_industry.html', 'nnunet_hybrid.html')) {
+        $reportPath = Join-Path $repositoryRoot "docs/$reportName"
+        if (Test-Path -LiteralPath $reportPath) {
+            Copy-Item -LiteralPath $reportPath -Destination $docs -Force
+        }
+    }
     $samples = Join-Path $destination 'samples'
     & (Join-Path $destination 'medvessel_phantom.exe') $samples
     if ($LASTEXITCODE -ne 0) { throw 'Could not generate bundled synthetic sample.' }

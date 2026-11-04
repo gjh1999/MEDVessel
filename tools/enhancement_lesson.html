@@ -1,0 +1,75 @@
+<section class="section" id="learn-frangi" data-watch>
+<div class="kicker">02 / 血管增强</div><h2>从灰度变化，读出管状结构。</h2>
+<p class="chapter-question">先读这条主线；公式、图示与源码细节按需展开。</p>
+<p><strong>Gaussian 选观察尺度 → 导数描述变化 → Hessian 组织二阶变化 → 特征值找主方向 → Frangi 判断管状形状 → 多尺度保留最大响应。</strong>这里得到的是增强分数，后面仍要分割，才能得到血管区域。</p>
+<div class="grid"><div class="card"><h3>看什么？</h3><p>理想血管沿走向较平缓，横穿管腔则有明显的二阶变化。一阶导数看“变化速度”，二阶导数看“变化速度怎样改变”。</p></div><div class="card"><h3>先分清灰度极性</h3><p>白底黑线中心是灰度谷，横向二阶导为正；暗底亮血管中心是灰度峰，符号相反。项目默认增强亮管，也支持暗管。</p></div></div>
+
+<details class="aside-detail" id="enhance-gaussian"><summary>1 · Gaussian 与 σ：为什么平滑后再求导？</summary><div>
+<p>高斯核是随距离衰减的局部权重：离中心近，权重大；远，权重小。σ 是标准差，控制平滑范围。小 σ 保留更多细节，对细结构敏感；大 σ 抑制细节，关注较粗结构。</p>
+<div class="formula">一维高斯核：Gσ(x) = exp(−x² / 2σ²) / (√(2π)σ)
+普通平滑：  Iσ = I ∗ Gσ
+高斯导数：  Ix = I ∗ (∂Gσ/∂x) = ∂(I ∗ Gσ)/∂x
+            Iy = I ∗ (∂Gσ/∂y)</div>
+<p>直接求导容易放大高频噪声。连续数学中，“先高斯平滑再求导”和“与高斯导数核卷积”等价；离散采样、核截断与边界处理会影响实际近似。普通平滑只得到更平滑的灰度图，导数核才给出方向变化。</p>
+<p>本项目 σ 使用 mm：σ=1 mm、spacing=0.5 mm 时为 2 个体素；spacing=2 mm 时则为 0.5 个体素。<strong>σ 不是直接测得的血管半径或直径</strong>，结构响应还受灰度剖面、采样与尺度归一化影响。</p>
+</div></details>
+
+<details class="aside-detail" id="enhance-derivatives"><summary>2 · 三张曲线：为什么暗线中心一阶为零，二阶却为正？</summary><div>
+<p>沿垂直于暗线的方向取灰度剖面：远处为白色，中心为黑色。下图共用同一横坐标，x=0 是暗线中心。</p>
+<!-- ENHANCEMENT_DERIVATIVES -->
+<div class="formula">I(x)   = 1 − exp(−x²/2)
+I′(x)  = x exp(−x²/2)
+I″(x)  = (1 − x²) exp(−x²/2)</div>
+<p>靠近中心时灰度先下降、再上升，所以 I′ 左负右正、中心为 0；此处是局部极小值，I″(0)=1&gt;0。二阶导在 x=±1 过零，在两侧外部为负。<strong>一阶为零不代表没有结构。</strong></p>
+<p>反例：I(x)=10x+2 的一阶导恒为 10，二阶导却为 0。因此二阶导描述的是灰度曲线的弯曲，而不是简单的“变化快慢”。这里的弯曲也不是血管中心线的几何曲率。</p>
+</div></details>
+
+<details class="aside-detail" id="enhance-hessian"><summary>3 · Hessian 与特征向量：怎样找到切线和法线？</summary><div>
+<div class="formula">二维：H = [ Ixx  Ixy ]       Hv₁ = λ₁v₁，Hv₂ = λ₂v₂
+          [ Ixy  Iyy ]       按 |λ₁| ≤ |λ₂| 排序
+Ixx = I ∗ (∂²Gσ/∂x²)，Ixy = I ∗ (∂²Gσ/∂x∂y)</div>
+<p>Hessian 把各方向的二阶导组织成对称矩阵，Ixy 是混合二阶导。特征向量 v 给出局部主方向；单位向量对应的特征值 λ=vᵀHv，表示该方向的二阶变化。</p>
+<!-- ENHANCEMENT_EIGENVECTORS -->
+<p>对白底黑线，沿线灰度近似不变，所以较小绝对值的 λ₁≈0，v₁ 近似沿局部切线；横穿暗线时形成灰度谷，所以 λ₂&gt;0、幅值较大，v₂ 近似沿法线。曲线弯曲时，各位置的局部方向也随之改变。</p>
+<p><strong>项目处理三维数据：</strong>Hessian 为 3×3 对称矩阵，保存 xx、xy、xz、yy、yz、zz 六项，并按 |λ₁|≤|λ₂|≤|λ₃| 排序。理想亮管中心 λ₁≈0，λ₂、λ₃&lt;0 且幅值相近；v₁ 近似沿管轴，另外两个向量张成横截面。平坦区、分叉或特征值退化时，方向未必稳定。</p>
+</div></details>
+
+<details class="aside-detail" id="enhance-frangi"><summary>4 · Frangi 评分：二维公式、三维实现和亮暗符号</summary><div>
+<p>Hessian 提供二阶结构，特征值把结构分解到主方向，Frangi 再据此评分。二维理想线状结构是“一小一大”，圆斑通常两者幅值接近，平坦区则两者都小。</p>
+<div class="formula">二维教学形式：|λ₁| ≤ |λ₂|
+RB = |λ₁| / |λ₂|，S = √(λ₁² + λ₂²)
+Vσ = exp(−RB² / 2β²) × (1 − exp(−S² / 2c²))
+亮线：仅 λ₂ &lt; 0 时计算；暗线：仅 λ₂ &gt; 0 时计算。
+λ₂=0 时响应为 0，避免退化除法。</div>
+<p>RB 小，表示两个方向差异大，更像线；S 太小，说明没有明显结构，需要压低响应。β 控制形状差异的敏感性，c 控制二阶结构强度的敏感性。暗管也可通过反转灰度来处理，但必须与符号筛选约定一致。</p>
+<div class="formula">本项目的三维形式：
+RA = |λ₂| / |λ₃|，RB = |λ₁| / √(|λ₂λ₃|)
+S  = √(λ₁² + λ₂² + λ₃²)
+Vσ = (1 − exp(−RA² / 2α²))
+     × exp(−RB² / 2β²) × (1 − exp(−S² / 2c²))</div>
+<p>RA 项压低片状结构，RB 项压低团块，S 项压低弱结构。默认亮管要求 λ₂、λ₃ 都为负；暗管要求都为正，分母退化也返回 0。c 与输入灰度尺度有关，不能跨数据无条件照搬。<strong>二维、三维的比值定义不同；响应也不是经过校准的血管概率。</strong></p>
+<p class="note">形状判据参考 <a href="https://static.aminer.org/pdf/PDF/000/293/316/multiscale_detection_of_curvilinear_structures_in_d_and_d_image.pdf" target="_blank" rel="noopener">Frangi 等的原始论文</a>；本项目具体符号与退化处理以 <a href="../include/filters/Frangi.hpp">Frangi.hpp</a> 为准。源码逐段解释见<a href="#code-h4">关键代码精读第 4 项</a>。</p>
+</div></details>
+
+<details class="aside-detail" id="enhance-scales"><summary>5 · 多尺度：为什么逐尺度计算，再取最大值？</summary><div>
+<p>血管粗细不同，单一 σ 难以兼顾细支和粗管。每个尺度都重新计算高斯导数、Hessian、特征值和 Frangi 响应，最后逐体素保留最大分数及其尺度。</p>
+<div class="formula">尺度归一化：Hσ = σ² · ∇²(I ∗ Gσ)
+多尺度增强：V(x) = maxσ Vσ(x)，σ ∈ {σ₁, σ₂, …}</div>
+<!-- ENHANCEMENT_SCALES -->
+<p>图中细线与粗线在不同尺度达到较强响应，仅演示尺度选择的直觉。二阶导乘 σ² 可减少直接比较不同尺度导数时的尺度偏置。项目无响应位置的 BestScale 为 0，分数相同时保留先遍历的尺度；<strong>BestScale 不等于血管直径。</strong></p>
+<p class="note">实现采用可分离相关、复制边界与离散矩校正；核截断在约 3σ。σ 远小于 spacing 时，采样不能视为高精度连续近似。Jacobi 分解时特征值与对应向量一起排序。<a href="#code-h3">查看 Hessian 关键代码 →</a></p>
+</div></details>
+
+<h3>完整增强流程</h3>
+<ol class="enhancement-flow" aria-label="多尺度增强算法流程">
+<li>输入 CT / MRI 灰度图</li><li>设置多个 σ</li><li>各尺度高斯导数 → Hessian</li><li>特征值分解 → Frangi 评分</li><li>逐位置取最大响应</li><li>输出增强图，再进入分割</li>
+</ol>
+<details class="aside-detail" id="enhance-recap"><summary>6 · 知识关系表：回顾每一步解决什么问题</summary><div>
+<div class="table-scroll"><table><thead><tr><th>技术</th><th>解决的问题</th></tr></thead><tbody>
+<tr><td>Gaussian</td><td>平滑噪声，设定观察尺度</td></tr><tr><td>Gaussian Derivative</td><td>在所选尺度计算局部灰度变化</td></tr><tr><td>一阶导数</td><td>描述灰度随空间位置变化的速度</td></tr><tr><td>二阶导数</td><td>描述变化速度的变化率，即灰度曲线的弯曲</td></tr><tr><td>Hessian</td><td>把不同方向的二阶变化组织成矩阵</td></tr><tr><td>特征值分解</td><td>提取主方向及其二阶变化强度</td></tr><tr><td>Frangi + 多尺度</td><td>按管状形状评分，并兼顾不同粗细的结构</td></tr>
+</tbody></table></div>
+<p>CTA 中可增强亮的造影血管，MRA 等灰度场景也可使用，但都需要核对极性、噪声和尺度。分叉、伪影及部分容积效应会破坏理想模式；增强后仍需阈值、生长、连通域或骨架等后续步骤。</p>
+</div></details>
+<!-- CODE_ENHANCE -->
+<a class="return" href="#learn-segment">下一章：怎样把增强图变成二值血管区域 →</a>
+</section>

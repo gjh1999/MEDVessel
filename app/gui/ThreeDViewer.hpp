@@ -1,35 +1,34 @@
 #pragma once
-#include "core/Volume3D.hpp"
 #include <QWidget>
+#include "core/Volume3D.hpp"
+#include <optional>
+#include <QFutureWatcher>
 #include <QMap>
 #include <vtkSmartPointer.h>
 #include <vtkPolyData.h>
-
-class vtkActor;
-class vtkRenderer;
+#include <memory>
+class QLabel;class QVTKOpenGLNativeWidget;class QPushButton;
+class vtkRenderer;class vtkGenericOpenGLRenderWindow;class vtkActor;
 class vtkOrientationMarkerWidget;
-class QVTKOpenGLNativeWidget;
-class QLabel;
-class QPushButton;
 namespace medvessel::desktop {
-class ThreeDViewer : public QWidget {
+struct ThreeDScene {
+    vtkSmartPointer<vtkPolyData> surface;
+    QMap<int,vtkSmartPointer<vtkPolyData>> branches;
+    QString error;
+};
+class ThreeDViewer:public QWidget {
     Q_OBJECT
 public:
-    struct Scene {
-        vtkSmartPointer<vtkPolyData> surface;
-        QMap<int,vtkSmartPointer<vtkPolyData>> branches;
-        ImageGeometry geometry;
-        std::array<std::size_t,3> dimensions{};
-        QString error;
-    };
     explicit ThreeDViewer(QWidget* parent=nullptr);
-    static Scene prepare(const QString& directory);
+    ~ThreeDViewer() override;
+    static ThreeDScene prepare(const QString& directory);
     void setResult(const QString& directory);
     void load();
     void selectBranch(int id);
-    bool focusWorld(const Point3D& world,QString* error=nullptr);
-    int branchCount()const{return scene_.branches.size();}
-    int selectedBranch()const{return selected_;}
+    bool focusWorld(const Point3D& world);
+    std::optional<Point3D> focusedWorld() const {return focusWorld_;}
+    int selectedBranch() const{return selected_;}
+    int branchCount() const{return actors_.size();}
 signals:
     void loaded(bool success);
     void branchPicked(int id);
@@ -38,20 +37,23 @@ signals:
     void locateSlicesRequested();
 protected:
     bool eventFilter(QObject* object,QEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 private:
     QString directory_;
-    Scene scene_;
     quint64 generation_=0;
-    int selected_=-1;
-    QVTKOpenGLNativeWidget* gl_=nullptr;
-    vtkSmartPointer<vtkRenderer> renderer_;
-    vtkSmartPointer<vtkActor> surfaceActor_,targetActor_;
-    vtkSmartPointer<vtkOrientationMarkerWidget> orientation_;
-    QMap<int,vtkSmartPointer<vtkActor>> actors_;
+    QFutureWatcher<ThreeDScene> watcher_;
+    QVTKOpenGLNativeWidget* view_=nullptr;
     QLabel* status_;
     QPushButton* locate_;
+    vtkSmartPointer<vtkRenderer> renderer_;
+    vtkSmartPointer<vtkGenericOpenGLRenderWindow> window_;
+    vtkSmartPointer<vtkActor> surface_;
+    vtkSmartPointer<vtkOrientationMarkerWidget> orientation_;
+    QMap<int,vtkSmartPointer<vtkActor>> actors_;
+    int selected_=-1;
+    std::optional<Point3D> focusWorld_;
+    vtkSmartPointer<vtkActor> focusMarker_;
     QPoint press_;
     void render();
-    void moveFocus(const Point3D& point);
 };
 }

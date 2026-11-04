@@ -11,6 +11,7 @@
 #include <QTabWidget>
 #endif
 #include <QSlider>
+#include <limits>
 #include <QDoubleSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
@@ -79,11 +80,47 @@ private slots:
         }else viewer->branchPicked(0);
         QCOMPARE(table->model()->index(table->currentIndex().row(),0).data().toInt(),0);QCOMPARE(viewer->selectedBranch(),0);
         QCOMPARE(resultSlices->findChild<QSlider*>("slice2")->value(),1);QCOMPARE(window.config().toJson(),originalConfig);
+        // The reverse path keeps the exact clicked world point, without selecting a branch or changing parameters.
+        const medvessel::Point3D target{9.5,14,31.4};
+        QSignalSpy branchNotifications(viewer,&ThreeDViewer::branchPicked);
+        resultSlices->worldPointPicked(target[0],target[1],target[2]);
+        QVERIFY(viewer->focusedWorld().has_value());QCOMPARE(*viewer->focusedWorld(),target);
+        QCOMPARE(viewer->selectedBranch(),0);QCOMPARE(branchNotifications.count(),0);QCOMPARE(window.config().toJson(),originalConfig);
+        QVERIFY(!viewer->focusWorld({std::numeric_limits<double>::quiet_NaN(),0,0}));QCOMPARE(*viewer->focusedWorld(),target);
+        // A point picked before 3D has loaded survives asynchronous geometry preparation.
+        viewer->setResult(dir);QVERIFY(!viewer->focusedWorld());viewer->selectBranch(1);QVERIFY(resultSlices->focusWorld(target));resultSlices->worldPointPicked(target[0],target[1],target[2]);
+        ready.clear();QTest::mouseClick(resultSlices->findChild<QPushButton*>("locateThreeD"),Qt::LeftButton);
+        QTRY_COMPARE(ready.count(),1);QVERIFY(ready.first().first().toBool());QCOMPARE(*viewer->focusedWorld(),target);
+        QCOMPARE(resultSlices->findChild<QSlider*>("slice2")->value(),1);
+        QCOMPARE(window.config().toJson(),originalConfig);
         auto shot=qEnvironmentVariable("MEDVESSEL_RESULT_SLICES_SCREENSHOT");if(!shot.isEmpty()){window.show();qobject_cast<QTabWidget*>(viewer->parentWidget()->parentWidget())->setCurrentWidget(resultSlices);QTest::qWait(50);QVERIFY(window.grab().save(shot));}
         QVERIFY(write("centerline.csv","branch_id,point_id,x_ras_mm,y_ras_mm,z_ras_mm\n0,0,nan,14,31.4\n"));QVERIFY(!ThreeDViewer::prepare(dir).error.isEmpty());
         viewer->setResult(dir);QCOMPARE(viewer->branchCount(),0);ready.clear();viewer->load();QTRY_COMPARE(ready.count(),1);QVERIFY(!ready.first().first().toBool());QCOMPARE(viewer->branchCount(),0);
     }
 #endif
+    void resultPickingUsesWorldCoordinates() {
+        medvessel::ImageGeometry g;g.spacing={.5,.7,2};g.origin={10,20,30};g.direction={-1,0,0,0,0,-1,0,1,0};
+        auto volume=std::make_shared<medvessel::Volume3D<float>>(9,11,7,g);
+        SliceViewer viewer;viewer.setReadOnly();viewer.resize(800,1000);viewer.setVolume(volume,"result");viewer.show();QTest::qWait(50);
+        QSignalSpy picked(&viewer,&SliceViewer::worldPointPicked),seeds(&viewer,&SliceViewer::seedPicked),rois(&viewer,&SliceViewer::roiPicked);
+        QSignalSpy requested(&viewer,&SliceViewer::locateThreeDRequested);
+        auto* locate=viewer.findChild<QPushButton*>("locateThreeD");QVERIFY(!locate->isEnabled());
+        const int axes[3][3]={{0,1,2},{0,2,1},{1,2,0}};const int dims[]={9,11,7};
+        for(int p=0;p<3;++p){
+            auto* view=viewer.findChild<QGraphicsView*>(QString("sliceView%1").arg(p));
+            viewer.findChild<QSlider*>(QString("slice%1").arg(p))->setValue(2);
+            std::array<double,3> q{3,4,5};q[axes[p][2]]=2;
+            auto point=view->mapFromScene((q[axes[p][0]]+.5)*g.spacing[axes[p][0]],(dims[axes[p][1]]-q[axes[p][1]]-.5)*g.spacing[axes[p][1]]);
+            QTest::mouseClick(view->viewport(),Qt::LeftButton,Qt::NoModifier,point);
+            QCOMPARE(picked.count(),p+1);auto expected=g.indexToWorld(q);
+            for(int a=0;a<3;++a)QVERIFY(std::abs(picked.last()[a].toDouble()-expected[a])<1e-8);
+            for(int a=0;a<3;++a)QCOMPARE(viewer.findChild<QSlider*>(QString("slice%1").arg(a))->value(),int(q[axes[a][2]]));
+        }
+        QCOMPARE(seeds.count(),0);QCOMPARE(rois.count(),0);QVERIFY(locate->isEnabled());
+        QTest::mouseClick(locate,Qt::LeftButton);QCOMPARE(requested.count(),1);
+        viewer.clear();QVERIFY(!locate->isEnabled());
+        auto* view=viewer.findChild<QGraphicsView*>("sliceView0");QTest::mouseClick(view->viewport(),Qt::LeftButton);QCOMPARE(picked.count(),3);
+    }
     void mouseSelectionAcrossPlanes() {
         medvessel::ImageGeometry g;g.spacing={0.5,0.7,2};g.direction={-1,0,0,0,1,0,0,0,-1};
         auto volume=std::make_shared<medvessel::Volume3D<float>>(9,11,7,g);
@@ -190,10 +227,24 @@ private slots:
         c.seeds.clear();c.low=.8;c.high=.2;QVERIFY_EXCEPTION_THROWN(c.arguments("o"),std::exception);
     }
     void configurationRoundTrip() {
-        auto c=base();c.roi="1,2,3,20,20,20";c.seeds="5,6,7";c.minIntensity="100";c.maxIntensity="900";c.nms=true;c.prune=1.2;
+        auto c=base();c.roi="1,2,3,20,20,20";c.seeds="5,6,7";c.minIntensity="100";c.maxIntensity="900";c.nms=true;c.prune=1.2;c.growthBandMm=.5;c.seedCoreRatio=.4;
         QString error;auto path=temp_.path()+"/config.json";QVERIFY2(writeJson(path,c.toJson(),&error),qPrintable(error));
         auto restored=JobConfig::fromJson(readJson(path));QCOMPARE(restored.arguments("o"),c.arguments("o"));QCOMPARE(restored.toJson(),c.toJson());
         QVERIFY_EXCEPTION_THROWN(JobConfig::fromJson({{"schema_version",99}}),std::exception);
+    }
+    void coreGrowthWindowPipeline() {
+        if(source_.isEmpty())QSKIP("Pipeline executables unavailable");
+        auto c=base();c.seeds="16,16,8";c.growthBandMm=.5;c.seedCoreRatio=.35;
+        MainWindow window;window.setConfig(c);
+        QCOMPARE(window.config().growthBandMm,.5);QCOMPARE(window.config().seedCoreRatio,.35);
+        QSignalSpy success(window.job(),&AnalysisJob::succeeded),failure(window.job(),&AnalysisJob::failed);
+        QString error;QVERIFY2(window.startAnalysis(&error),qPrintable(error));
+        QTRY_VERIFY_WITH_TIMEOUT(success.count()+failure.count()>0,30000);
+        QVERIFY2(failure.isEmpty(),failure.isEmpty()?"":qPrintable(failure.first().first().toString()));QCOMPARE(success.count(),1);
+        auto result=window.job()->outputDirectory();QVERIFY(QFileInfo::exists(result+"/core.nii.gz"));
+        auto record=readJson(result+"/run.json");QCOMPARE(record["growth_band_mm"].toDouble(),.5);
+        QCOMPARE(record["seed_core_ratio"].toDouble(),.35);QVERIFY(record["effective_core_threshold"].toDouble()>0);
+        QVERIFY2(window.openResult(result,&error),qPrintable(error));
     }
     void fullWindowPipelineAndReopen() {
         if(source_.isEmpty())QSKIP("Pipeline executables unavailable");

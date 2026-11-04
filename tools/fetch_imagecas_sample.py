@@ -85,6 +85,8 @@ class RangeReader:
                 break
             result.extend(body[offset:offset + take])
             self.position += take
+            if self.position % self.chunk_size == 0:
+                self.futures.pop(index, None)  # Release consumed chunk buffers on long downloads.
         return bytes(result)
 
     def close(self):
