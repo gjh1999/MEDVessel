@@ -41,9 +41,13 @@ def main():
     check_grid(enhanced, historical)
     if not np.array_equal(a, b):
         raise ValueError('C++ enhancement changed')
-    test = subprocess.run([sys.executable, str(HERE / 'test_pipeline.py')], check=True,
+    test_report = work / 'pipeline_tests.json'
+    test = subprocess.run([sys.executable, str(HERE / 'test_pipeline.py'), '--report-json', str(test_report)], check=True,
                           capture_output=True, text=True)
     (work / 'test_pipeline.log').write_text(test.stdout + test.stderr, encoding='utf-8')
+    tests = json.loads(test_report.read_text(encoding='utf-8'))
+    if not tests['successful'] or tests['skipped']:
+        raise ValueError('Validation evidence requires all pipeline tests to pass without skips')
     checkpoint_count = len(list(work.rglob('*.pth')))
     if checkpoint_count:
         raise ValueError('Unexpected trained checkpoint in verification work directory')
@@ -56,7 +60,7 @@ def main():
               'internal_split': {'train': len(split['train']), 'validation': len(split['val']),
                                  'independent_test': 0},
               'enhancement_real_roi_voxelwise_identical_to_existing_cpp': True,
-              'pipeline_unit_and_integration_tests_passed': 7,
+              'pipeline_unit_and_integration_tests_passed': tests['passed'],
               'full_volume_preparation_checked_on_synthetic_data': True,
               'full_volume_real_data_batch_prepared': False,
               'environment': json.loads((work / 'environment.json').read_text()),

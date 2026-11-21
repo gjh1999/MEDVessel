@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from urllib.request import Request, urlopen
 import zipfile
+import time
+from urllib.error import URLError
 
 URL = "https://zenodo.org/records/23562647/files/ImageCAS-X_dataset_v2.zip?download=1"
 MAX_TRANSFER = 16 * 1024 * 1024
@@ -54,10 +56,17 @@ class RemoteZip(io.RawIOBase):
                 if self.transferred + end - start + 1 > MAX_TRANSFER:
                     raise ValueError("Remote ZIP transfer budget exhausted")
                 request = Request(self.url, headers={"Range": f"bytes={start}-{end}", "Accept-Encoding": "identity"})
-                with urlopen(request, timeout=30) as response:
-                    if response.status != 206 or response.headers.get("Content-Range") != f"bytes {start}-{end}/{self.length}":
-                        raise ValueError("Incorrect remote ZIP range")
-                    data = response.read(end - start + 2)
+                for attempt in range(4):
+                    try:
+                        with urlopen(request, timeout=30) as response:
+                            if response.status != 206 or response.headers.get("Content-Range") != f"bytes {start}-{end}/{self.length}":
+                                raise ValueError("Incorrect remote ZIP range")
+                            data = response.read(end - start + 2)
+                        break
+                    except (URLError, TimeoutError, ConnectionError):
+                        if attempt == 3:
+                            raise
+                        time.sleep(2 ** attempt)
                 self.transferred += len(data)
                 if len(data) != end - start + 1:
                     raise ValueError("Incomplete remote ZIP range")

@@ -33,6 +33,8 @@ def dataset_path(work, dataset_id):
     if (directory / 'PREPARATION_INCOMPLETE').exists():
         raise ValueError('Dataset preparation is incomplete')
     provenance = json.loads((directory / 'preparation.json').read_text())
+    from holdout import reserve
+    reserve(directory, provenance)
     return directory, provenance
 
 
@@ -74,6 +76,7 @@ def forward(args, dataset):
     plans = PlansManager(str(plans_file))
     configuration = plans.get_configuration('3d_fullres')
     ds = json.loads((dataset / 'dataset.json').read_text())
+    provenance = json.loads((dataset / 'preparation.json').read_text())
     torch.manual_seed(0)
     network = get_network_from_plans(configuration.network_arch_class_name,
                                     configuration.network_arch_init_kwargs,
@@ -111,7 +114,8 @@ def forward(args, dataset):
         torch.cuda.synchronize()
     report = {'purpose': 'Untrained architecture forward smoke check only; no segmentation accuracy',
               'dataset': dataset.name, 'device': str(device), 'input_shape': list(tensor.shape),
-              'input_case': case_id, 'input_kind': 'center patch of real officially preprocessed dual-channel CTA',
+              'input_case': case_id, 'input_kind': 'center patch of officially preprocessed dual-channel volume',
+              'data_kind': provenance.get('data_kind', 'unspecified'),
               'output_shape': shape, 'planned_training_patch': configuration.patch_size,
               'parameters': sum(p.numel() for p in network.parameters()),
               'seconds': time.perf_counter() - start, 'finite': True,
@@ -153,6 +157,8 @@ def main():
     elif args.stage == 'forward':
         forward(args, dataset)
     else:
+        if provenance.get('data_kind') == 'synthetic':
+            raise ValueError('Training on synthetic validation fixtures is disabled')
         if provenance['mode'] != 'full-volume' or provenance['reference_guided_roi']:
             raise ValueError('Training on reference-guided smoke ROIs is deliberately disabled; prepare full-volume data')
         if not (args.work / 'nnUNet_preprocessed' / dataset.name / 'nnUNetPlans.json').exists():

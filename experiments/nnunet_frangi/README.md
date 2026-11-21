@@ -1,5 +1,7 @@
 # CTA + Frangi 双通道 nnU-Net 实验
 
+数据集官方 GitHub、下载地址和恢复命令见 [数据来源与恢复](DATA_SOURCES.md)。
+
 ## 1. 本次目标与当前边界
 
 新增独立实验目录，复用现有 C++ Frangi，把原始 CTA 和连续血管增强图一起输入 nnU-Net v2 的 3D 网络。传统增强提供管状结构提示，最终分割由网络学习。当前仅准备数据、核对官方格式并进行随机初始化网络的前向检查，不启动训练，不产生深度模型 Dice 成绩。
@@ -40,6 +42,8 @@
 
 ## 4. nnU-Net 文件组织与划分
 
+准备前检查 manifest：病例 ID 必须是非空的字母、数字、下划线或连字符字符串，且不能重复；源图和标签路径必须位于数据目录内。无效 manifest 在创建输出目录前报错，避免重复病例覆盖输出文件。
+
 ```text
 work/
   nnUNet_raw/
@@ -79,7 +83,21 @@ dataset.json 的通道为 `{"0":"CT","1":"nonorm"}`，标签为 `{"background":0
 
 ## 6. 一步步在当前电脑做验证（不训练）
 
-以下命令均在 MEDVessel 根目录运行。当前本机使用子目录 .venv，通过 system-site-packages 复用 Anaconda 的 CUDA PyTorch，其余新增包只安装在子目录环境。换电脑不复制该 .venv，重新创建独立环境。
+### 当前工作区续开发验证
+
+当前工作区已在项目根目录 .venv 重建独立 Python 3.10 环境并编译 `medvessel_enhance`；该环境安装的是 CPU PyTorch，不能作为 CUDA 或 RTX 5080 已验证的证据。原 `validation_result.json` 保留为历史验证记录，不代表当前机器状态。当前工作区未发现 `datasets/imagecas-multicase` 真实数据目录，也没有旧的参考辅助 ROI 缓存。
+
+新增合成数据端到端入口，生成 3 例带反射轴的体数据，调用真实 C++ 增强，随后执行官方完整性检查、规划、预处理及 CPU 随机权重前向。它不启动训练，也不产生分割准确率结论；合成数据 provenance 会阻止误启动正式训练。输出目录必须全新，失败时保留 `VALIDATION_INCOMPLETE` 和逐阶段日志。
+
+```powershell
+./.venv/Scripts/python.exe experiments/nnunet_frangi/test_pipeline.py --report-json experiments/nnunet_frangi/work/pipeline_tests.json
+./.venv/Scripts/python.exe -m unittest discover -s tests -p test_standard_metrics.py
+./.venv/Scripts/python.exe experiments/nnunet_frangi/validate_synthetic.py --work experiments/nnunet_frangi/work/synthetic-validation-new
+```
+
+成功后查看新目录的 `synthetic_validation.json`，不要将其当作历史真实数据验证结果。`record_validation.py` 现在读取实际测试计数；任何跳过项都会阻止生成完整验证结论。真实数据已恢复，后续执行第 7 节的完整 CTA 准备流程。
+
+以下命令均在 MEDVessel 根目录运行，统一使用根目录 .venv。当前环境不启用 system-site-packages，依赖独立安装，PyTorch 为 CPU 版本。换电脑不复制 .venv，重新创建环境并根据目标 GPU 安装 CUDA PyTorch。
 
 ```powershell
 # 开启独立增强工具（要求主工程已配置 NIfTI）
@@ -87,11 +105,11 @@ dataset.json 的通道为 `{"0":"CT","1":"nonorm"}`，标签为 `{"background":0
 ./.venv/Scripts/cmake.exe --build build/cmake --target medvessel_enhance --parallel 4
 
 # 下面四步都不会启动训练
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py check
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/prepare_dataset.py --mode smoke-roi
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py verify --dataset 512
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py plan --dataset 512 --gpu-memory-gb 3
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py forward --dataset 512 --device cuda
+./.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py check
+./.venv/Scripts/python.exe experiments/nnunet_frangi/prepare_dataset.py --mode smoke-roi
+./.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py verify --dataset 512
+./.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py plan --dataset 512 --gpu-memory-gb 3
+./.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py forward --dataset 512 --device cuda
 ```
 
 plan 执行的是官方指纹提取、网络规划和 CPU 预处理，限制进程数为 1；它不会迭代训练。forward 仅用随机权重进行一个小尺寸前向，不创建优化器、不反向传播、不保存权重。它不是推理准确度测试，也不证明完整训练 patch 的显存占用。3 GB 规划仅用于 3050 本机检查，不要作为 5080 正式实验的规划。
@@ -100,32 +118,51 @@ plan 执行的是官方指纹提取、网络规划和 CPU 预处理，限制进�
 
 ## 7. 换到 RTX 5080 后的准备与启动
 
+用户已授权本轮 11 例开发数据完成验证后启动训练。自动队列如下，等待 `full_validation.json` 成功后，检查 CUDA 前向和反向运算，重新按 8 GB 规划并预处理，执行 CUDA 前向检查，最后启动官方默认训练器的 fold 0（8/3 内部划分）。不缩短官方默认训练周期。状态保存为 `training_status.json`，阶段日志为 `training_plan.log`、`cuda_forward.log`、`training.log`。失败后停止；存在 checkpoint 时拒绝自动覆盖或重启。
+
+```powershell
+./.venv/Scripts/python.exe experiments/nnunet_frangi/train_when_ready.py --work experiments/nnunet_frangi/work/full-real-01 --execute-training
+```
+
+每个 work 目录只允许一个训练队列，运行时存在 `TRAINING_QUEUE_LOCK`。不要重复启动；进程意外中断后，应先确认队列进程已经退出再处理残留锁文件。
+
+完整 CTA 准备完成后，可使用下面的入口执行环境检查、官方完整性检查、规划、预处理、CPU 前向和归一化核对。各阶段日志写入指定 work 目录，成功后生成 `full_validation.json`；失败时保留 `FULL_VALIDATION_INCOMPLETE`。它不会启动训练。等待参数可在准备仍进行时等待，超时会报错。
+
+```powershell
+./.venv/Scripts/python.exe experiments/nnunet_frangi/validate_full_volume.py --work experiments/nnunet_frangi/work/full-real-01 --wait-for-preparation-seconds 14400
+```
+
 先复制源码与原始配对数据；不复制本机 .venv。建议 Python 3.11 或 3.12，重新创建环境。RTX 5080 属于 Blackwell，不能直接照搬本机 PyTorch 2.6 + CUDA 12.4；按 PyTorch 官方安装页选择支持目标卡的 CUDA 构建，并运行 check 实际执行 CUDA kernel，而不是只看 nvidia-smi。
 
 ```powershell
-py -3.12 -m venv experiments/nnunet_frangi/.venv
+py -3.12 -m venv ./.venv
 # 按 https://pytorch.org/get-started/locally/ 在此环境安装匹配的 CUDA PyTorch / torchvision
-experiments/nnunet_frangi/.venv/Scripts/python.exe -m pip install -r experiments/nnunet_frangi/requirements.txt
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py check
+./.venv/Scripts/python.exe -m pip install -r experiments/nnunet_frangi/requirements.txt
+./.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py check
 
 # 重新编译增强工具，或迁移已验证、依赖齐全的同平台二进制后用 --enhancer 指定
 # 使用完整 CTA；这里不采用旧的标注辅助 ROI
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/prepare_dataset.py --mode full-volume
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py verify --dataset 511
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py plan --dataset 511 --gpu-memory-gb 8
+./.venv/Scripts/python.exe experiments/nnunet_frangi/prepare_dataset.py --mode full-volume --check-only
+./.venv/Scripts/python.exe experiments/nnunet_frangi/prepare_dataset.py --mode full-volume
+./.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py verify --dataset 511
+./.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py plan --dataset 511 --gpu-memory-gb 8
 
 # 只预览训练命令，不执行
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py train --dataset 511
+./.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py train --dataset 511
 
 # 晚上明确开始时才执行这一条；本次没有执行
-experiments/nnunet_frangi/.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py train --dataset 511 --execute-training
+./.venv/Scripts/python.exe experiments/nnunet_frangi/workflow.py train --dataset 511 --execute-training
 ```
 
 8 GB 是保守的 nnU-Net 基线规划目标，不代表 5080 的实际显存，也不是最优参数。正式对照先保持相同规划，实测显存后再考虑更大 patch。完整 CTA 的多尺度 Hessian 在 CPU 上生成，需要较多系统内存与磁盘，GPU 更快不会自动加速这段 C++ CPU 代码。先单例观察资源再批量，默认顺序处理，不大量开启进程。
 
+`--check-only` 适用于完整 CTA：检查选中病例的源图、标签 SHA256 和增强程序是否存在，不生成输出、不运行增强。正式准备也会先检查整批哈希；manifest 的 `complete` 明确为 false 时拒绝使用。数据不在默认目录时传入 `--data 实际数据目录`，该目录应包含 manifest.json 及其引用的文件。
+
 Windows 使用 eager 模式并限制数据增强进程为 2；环境不稳定时可以考虑 Linux / WSL2，但不要跨系统复用虚拟环境。预处理与网络规划也需要重新验证，不能只搬一个 exe 就认为训练环境一致。
 
 ## 8. 训练后推理与评价
+
+推理输入准备期间写入 `PREPARATION_INCOMPLETE`，只有两个通道和准备记录全部写出后才移除。准备失败后请使用新的输出目录重新执行。预测入口拒绝带此标记的目录、空目录、通道不成对的病例及非标准 NIfTI 文件名，在加载模型之前报告错误。
 
 ```powershell
 python experiments/nnunet_frangi/prepare_inference.py new_cta.nii.gz new_channels --case-id patient_new

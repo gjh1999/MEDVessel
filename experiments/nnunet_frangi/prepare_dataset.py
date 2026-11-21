@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import random
+import re
 import subprocess
 
 import nibabel as nib
@@ -62,7 +63,9 @@ def enhance(source, destination, executable):
         command += ['--' + key, str(parameters[key])]
     env = os.environ.copy()
     if os.name == 'nt':
-        env['PATH'] = 'C:/msys64/ucrt64/bin;' + env.get('PATH', '')
+        runtime = ROOT / 'build/deps/msys64/ucrt64/bin'
+        env['PATH'] = os.pathsep.join(
+            [str(Path(executable).resolve().parent), str(runtime), 'C:/msys64/ucrt64/bin', env.get('PATH', '')])
     env.setdefault('OMP_NUM_THREADS', '4')
     subprocess.run(command, check=True, env=env)
 
@@ -76,15 +79,39 @@ def fixed_split(ids):
     return [{'train': sorted(ordered[count:]), 'val': sorted(ordered[:count])}]
 
 
+def validate_manifest_cases(cases, data_directory):
+    if not isinstance(cases, list) or not cases:
+        raise ValueError('Manifest cases must be a nonempty list')
+    seen = set()
+    root = data_directory.resolve()
+    for entry in cases:
+        case = entry.get('case_id') if isinstance(entry, dict) else None
+        if not isinstance(case, str) or not re.fullmatch(r'[A-Za-z0-9_-]+', case):
+            raise ValueError('Manifest case IDs must be filename-safe strings')
+        if case in seen:
+            raise ValueError(f'Duplicate manifest case ID: {case}')
+        seen.add(case)
+        for key in ('source_file', 'label_file'):
+            value = entry.get(key)
+            if not isinstance(value, str) or not value:
+                raise ValueError(f'Missing {key} for {case}')
+            path = (root / value).resolve()
+            if not path.is_relative_to(root):
+                raise ValueError(f'Manifest {key} escapes data directory: {case}')
+
+
 def prepare(args):
     mode = args.mode
     prefix = 'smoke' if mode == 'smoke-roi' else 'full'
     name = f'Dataset{CONFIG[prefix + "_dataset_id"]:03d}_{CONFIG[prefix + "_dataset_name"]}'
     directory = args.work / 'nnUNet_raw' / name
-    if directory.exists():
+    if directory.exists() and not getattr(args, 'check_only', False):
         raise FileExistsError(f'Use a new work directory; refusing partial overwrite: {directory}')
     manifest = json.loads((args.data / 'manifest.json').read_text())
+    if manifest.get('complete') is False:
+        raise ValueError('Source manifest is incomplete; finish data acquisition first')
     selected = manifest['cases']
+    validate_manifest_cases(selected, args.data)
     if args.cases:
         wanted = set(args.cases.split(','))
         selected = [c for c in selected if c['case_id'] in wanted]
@@ -92,6 +119,22 @@ def prepare(args):
             raise ValueError('Requested IDs missing from manifest')
     if len(selected) < 3:
         raise ValueError('At least three cases required for the development split')
+    if mode == 'full-volume':
+        # Check every selected source before any expensive enhancement or output creation.
+        for entry in selected:
+            for file_key, hash_key in (('source_file', 'source_sha256'), ('label_file', 'label_sha256')):
+                expected = entry.get(hash_key)
+                if not isinstance(expected, str) or not re.fullmatch(r'[0-9a-fA-F]{64}', expected):
+                    raise ValueError(f'Invalid {hash_key} for {entry["case_id"]}')
+                if sha256(args.data / entry[file_key]) != expected.lower():
+                    raise ValueError(f'Source integrity mismatch for {entry["case_id"]}: {file_key}')
+        if not args.enhancer.is_file():
+            raise FileNotFoundError(f'Build or specify the Frangi enhancer: {args.enhancer}')
+    elif getattr(args, 'check_only', False):
+        raise ValueError('--check-only currently supports full-volume sources only')
+    if getattr(args, 'check_only', False):
+        print(f'Source preflight passed: {len(selected)} cases; no output created or enhancement started')
+        return
     directory.mkdir(parents=True)
     for child in ('imagesTr', 'labelsTr'):
         (directory / child).mkdir()
@@ -142,6 +185,7 @@ def prepare(args):
     split = fixed_split([r['case_id'] for r in records])
     (directory / 'splits_final.json').write_text(json.dumps(split, indent=2)+'\n')
     provenance = {'mode': mode, 'configuration': CONFIG, 'cases': records,
+                  'data_kind': manifest.get('data_kind', 'unspecified'),
                   'all_current_cases_previously_used_for_traditional_development': all(
                       r['source_case_id'] in {'1','100','102','103','106','107','109','11','110','111','112'} for r in records),
                   'split_status': 'internal development split; not a clean external/independent test',
@@ -159,5 +203,6 @@ if __name__ == '__main__':
     parser.add_argument('--work', type=Path, default=HERE / 'work')
     parser.add_argument('--data', type=Path, default=ROOT / 'datasets/imagecas-multicase')
     parser.add_argument('--cases', help='Comma-separated source IDs; default all 11 available cases')
+    parser.add_argument('--check-only', action='store_true', help='Check all full-volume file hashes and enhancer presence without writing outputs')
     parser.add_argument('--enhancer', type=Path, default=ROOT / 'build/cmake/experiments/nnunet_frangi/medvessel_enhance.exe')
     prepare(parser.parse_args())

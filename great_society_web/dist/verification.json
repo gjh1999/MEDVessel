@@ -1,0 +1,10 @@
+{
+  "local_images": 8,
+  "anchors_valid": true,
+  "local_resources_valid": true,
+  "statistical_charts": 5,
+  "mechanism_diagrams": 4,
+  "comparison_table": 1,
+  "photos": 8,
+  "offline": true
+}

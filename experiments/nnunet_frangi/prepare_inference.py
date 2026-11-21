@@ -16,6 +16,8 @@ def main():
     if not args.case_id or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in args.case_id):
         raise ValueError('Use a filename-safe case ID')
     args.output.mkdir(parents=True, exist_ok=False)
+    marker = args.output / 'PREPARATION_INCOMPLETE'
+    marker.write_text('Inference channels are incomplete. Do not predict.\n')
     source, ct = load_volume(args.image)
     vessel_path = args.output / f'{args.case_id}_0001.nii.gz'
     enhance(args.image, vessel_path, args.enhancer)
@@ -26,6 +28,7 @@ def main():
     save_like(ct.astype(np.float32), source, args.output / f'{args.case_id}_0000.nii.gz')
     (args.output / 'preparation.json').write_text(json.dumps({'frangi': CONFIG['frangi'],
         'labels_read': False, 'source': str(args.image.resolve())}, indent=2)+'\n')
+    marker.unlink()
     print('Prepared two image-only inference channels:', args.output)
 
 

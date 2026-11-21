@@ -25,14 +25,15 @@ HEADER = struct.Struct("<4s5H3I2H")
 
 class RangeReader:
     """Small public HTTP ranges with bounded prefetch and a resumable cache."""
-    def __init__(self):
-        request = Request(URL, headers={"Range": "bytes=0-0", "Accept-Encoding": "identity"})
+    def __init__(self, url=URL):
+        request = Request(url, headers={"Range": "bytes=0-0", "Accept-Encoding": "identity"})
         with urlopen(request, timeout=30) as response:
             content_range = response.headers.get("Content-Range", "")
             if response.status != 206 or not content_range.startswith("bytes 0-0/"):
                 raise ValueError("Server did not honour a one-byte range probe")
             self.url = response.geturl()  # Public signed download URL; never persisted or printed.
             self.total = int(content_range.rsplit("/", 1)[1])
+            self.limit = min(LIMIT, self.total)
             cache_key = hashlib.sha256((str(self.total) + response.headers.get("ETag", "")).encode()).hexdigest()[:16]
         self.cache = Path("build/dataset-metadata/imagecas-chunks") / cache_key
         self.cache.mkdir(parents=True, exist_ok=True)
@@ -44,7 +45,7 @@ class RangeReader:
 
     def _fetch(self, index):
         start = index * self.chunk_size
-        end = min(start + self.chunk_size, LIMIT) - 1
+        end = min(start + self.chunk_size, self.limit) - 1
         path = self.cache / f"{index:04d}.bin"
         if path.exists() and path.stat().st_size == end - start + 1:
             return path.read_bytes()
@@ -69,12 +70,12 @@ class RangeReader:
         return body
 
     def _prefetch(self, current):
-        for index in range(current, min(current + 6, LIMIT // self.chunk_size)):
+        for index in range(current, min(current + 6, (self.limit + self.chunk_size - 1) // self.chunk_size)):
             if index not in self.futures:
                 self.futures[index] = self.pool.submit(self._fetch, index)
 
     def read(self, count):
-        count = min(count, LIMIT - self.position)
+        count = min(count, self.limit - self.position)
         result = bytearray()
         while len(result) < count:
             index, offset = divmod(self.position, self.chunk_size)
@@ -112,14 +113,14 @@ def exact(stream, count):
 
 
 class OuterZipStream:
-    def __init__(self, response):
+    def __init__(self, response, expected_member='1-200.z01'):
         self.response = response
         header = HEADER.unpack(exact(response, HEADER.size))
         if header[0] != b"PK\x03\x04" or header[3] != 8 or header[2] & 1:
             raise ValueError("Unexpected public ZIP wrapper")
         name = exact(response, header[-2]).decode("utf-8")
         exact(response, header[-1])
-        if name != "1-200.z01":
+        if name != expected_member:
             raise ValueError("Unexpected split-volume name")
         self.decoder = zlib.decompressobj(-15)
         self.pending = bytearray()

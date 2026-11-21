@@ -1,5 +1,7 @@
 # MEDVessel
 
+Python 工具和 nnU-Net 实验统一使用项目根目录的 `.venv`，解释器为 `./.venv/Scripts/python.exe`。在 MEDVessel 根目录执行命令；实验依赖及流程见 [nnU-Net 实验说明](experiments/nnunet_frangi/README.md)。
+
 **桌面版：** 双击 `build/desktop/medvessel_gui.exe`，或运行 `./tools/start_gui.ps1`。点击「载入合成示例」→「开始分析」体验全流程。使用和构建见 [Qt 桌面工作台](docs/gui.md)。
 
 想学习 Qt 怎么写：打开 [学习网页的 Qt 开发章节](docs/medvessel_learning_guide.html#learn-qt)，或阅读 [Qt 开发讲解源码](docs/qt_development.md)。

@@ -13,9 +13,119 @@ import numpy as np
 from prepare_dataset import ROOT, HERE, check_grid, load_volume, save_like, fixed_split, prepare, sha256
 import workflow
 import evaluate_predictions
+import prepare_inference
+import validate_full_volume
+import train_when_ready
+from predict import validate_channels
+from prepare_dataset import validate_manifest_cases
 
 
 class PipelineTests(unittest.TestCase):
+    def test_training_queue_timeout_never_starts_training(self):
+        with tempfile.TemporaryDirectory() as temp, \
+             patch.object(sys, 'argv', ['train_when_ready.py', '--work', temp, '--wait-seconds', '0', '--execute-training']), \
+             patch.object(train_when_ready.subprocess, 'run') as run:
+            with self.assertRaises(TimeoutError):
+                train_when_ready.main()
+            run.assert_not_called()
+            root = Path(temp)
+            self.assertFalse((root / 'TRAINING_QUEUE_LOCK').exists())
+            self.assertEqual(json.loads((root / 'training_status.json').read_text())['stage'], 'failed')
+
+    def test_full_validation_stops_on_failed_stage(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with patch.object(sys, 'argv', ['validate_full_volume.py', '--work', temp]), \
+                 patch.object(validate_full_volume, 'dataset_path', return_value=(root, {
+                     'mode': 'full-volume', 'reference_guided_roi': False})), \
+                 patch.object(validate_full_volume.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1)) as run:
+                with self.assertRaisesRegex(RuntimeError, 'check failed'):
+                    validate_full_volume.main()
+            self.assertEqual(run.call_count, 1)
+            self.assertTrue((root / 'FULL_VALIDATION_INCOMPLETE').exists())
+            self.assertFalse((root / 'full_validation.json').exists())
+
+    def test_full_volume_preflight_checks_all_cases_before_enhancing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cases = []
+            for index in range(3):
+                source = root / f'{index}.nii.gz'
+                source.write_bytes(b'placeholder')
+                cases.append({'case_id': str(index), 'source_file': source.name,
+                              'label_file': source.name, 'source_sha256': sha256(source),
+                              'label_sha256': sha256(source)})
+            manifest = root / 'manifest.json'
+            manifest.write_text(json.dumps({'cases': cases, 'complete': True}))
+            args = argparse.Namespace(mode='full-volume', data=root, work=root / 'output',
+                                      cases=None, enhancer=source, check_only=True)
+            with patch('prepare_dataset.enhance') as enhancer:
+                prepare(args)
+                self.assertFalse(args.work.exists())
+                args.check_only = False
+                source.write_bytes(b'corrupted final case')
+                with self.assertRaisesRegex(ValueError, 'integrity mismatch'):
+                    prepare(args)
+                enhancer.assert_not_called()
+                self.assertFalse(args.work.exists())
+            manifest.write_text(json.dumps({'cases': cases, 'complete': False}))
+            with self.assertRaisesRegex(ValueError, 'incomplete'):
+                prepare(args)
+
+    def test_inference_failure_keeps_marker_and_success_clears_it(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / 'source.nii.gz'
+            image = nib.Nifti1Image(np.ones((4, 4, 4), dtype=np.float32), np.eye(4))
+            save_like(np.ones(image.shape, dtype=np.float32), image, source)
+            failed = root / 'failed'
+            with patch.object(sys, 'argv', ['prepare_inference.py', str(source), str(failed)]), \
+                 patch.object(prepare_inference, 'enhance', side_effect=RuntimeError('enhancement failed')):
+                with self.assertRaisesRegex(RuntimeError, 'enhancement failed'):
+                    prepare_inference.main()
+            with self.assertRaisesRegex(ValueError, 'incomplete'):
+                validate_channels(failed)
+            ready = root / 'ready'
+            def fake_enhance(source_path, destination, executable):
+                save_like(np.full(image.shape, .5, dtype=np.float32), image, destination)
+            with patch.object(sys, 'argv', ['prepare_inference.py', str(source), str(ready)]), \
+                 patch.object(prepare_inference, 'enhance', side_effect=fake_enhance):
+                prepare_inference.main()
+            validate_channels(ready)
+            self.assertFalse((ready / 'PREPARATION_INCOMPLETE').exists())
+            self.assertFalse(json.loads((ready / 'preparation.json').read_text())['labels_read'])
+
+    def test_manifest_rejects_duplicate_ids_and_escaping_paths(self):
+        root = HERE / 'work'
+        entry = {'case_id': '1', 'source_file': 'ct.nii.gz', 'label_file': 'label.nii.gz'}
+        validate_manifest_cases([entry], root)
+        with self.assertRaisesRegex(ValueError, 'Duplicate'):
+            validate_manifest_cases([entry, dict(entry)], root)
+        for case in ('../outside', '', 1):
+            with self.assertRaisesRegex(ValueError, 'filename-safe'):
+                validate_manifest_cases([{**entry, 'case_id': case}], root)
+        with self.assertRaisesRegex(ValueError, 'escapes'):
+            validate_manifest_cases([{**entry, 'source_file': '../outside.nii.gz'}], root)
+
+    def test_inference_rejects_incomplete_or_unpaired_channels(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            with self.assertRaises(ValueError):
+                validate_channels(directory)
+            (directory / 'patient_0000.nii.gz').touch()
+            with self.assertRaises(ValueError):
+                validate_channels(directory)
+            (directory / 'patient_0001.nii.gz').touch()
+            validate_channels(directory)
+            marker = directory / 'PREPARATION_INCOMPLETE'
+            marker.touch()
+            with self.assertRaisesRegex(ValueError, 'incomplete'):
+                validate_channels(directory)
+            marker.unlink()
+            (directory / 'unexpected.nii.gz').touch()
+            with self.assertRaisesRegex(ValueError, 'filename'):
+                validate_channels(directory)
+
     def test_split_is_fixed_disjoint_and_complete(self):
         ids = [f'case_{n}' for n in range(11)]
         a, b = fixed_split(ids)[0], fixed_split(list(reversed(ids)))[0]
@@ -53,9 +163,22 @@ class PipelineTests(unittest.TestCase):
                 load_volume(path)
 
     def test_smoke_training_guard(self):
-        with patch.object(sys, 'argv', ['workflow.py', 'train', '--dataset', '512']), \
+        with tempfile.TemporaryDirectory() as temp, \
+             patch.object(sys, 'argv', ['workflow.py', 'train', '--dataset', '512', '--work', temp]), \
+             patch.object(workflow, 'dataset_path', return_value=(Path(temp), {
+                 'mode': 'smoke-roi', 'reference_guided_roi': True})), \
              patch.object(workflow.subprocess, 'run') as run:
             with self.assertRaisesRegex(ValueError, 'reference-guided'):
+                workflow.main()
+            run.assert_not_called()
+
+    def test_synthetic_training_guard(self):
+        with tempfile.TemporaryDirectory() as temp, \
+             patch.object(sys, 'argv', ['workflow.py', 'train', '--work', temp]), \
+             patch.object(workflow, 'dataset_path', return_value=(Path(temp), {
+                 'data_kind': 'synthetic', 'mode': 'full-volume', 'reference_guided_roi': False})), \
+             patch.object(workflow.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'synthetic'):
                 workflow.main()
             run.assert_not_called()
 
@@ -110,4 +233,17 @@ class PipelineTests(unittest.TestCase):
 
 if __name__ == '__main__':
     (HERE / 'work').mkdir(exist_ok=True)
-    unittest.main()
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--report-json', type=Path)
+    options, remaining = parser.parse_known_args()
+    program = unittest.main(argv=[sys.argv[0], *remaining], exit=False)
+    result = program.result
+    if options.report_json:
+        options.report_json.write_text(json.dumps({
+            'tests_run': result.testsRun, 'skipped': len(result.skipped),
+            'failures': len(result.failures), 'errors': len(result.errors),
+            'passed': result.testsRun - len(result.skipped) - len(result.failures) - len(result.errors),
+            'successful': result.wasSuccessful(),
+            'skipped_tests': [{'test': str(test), 'reason': reason} for test, reason in result.skipped],
+        }, indent=2) + '\n', encoding='utf-8')
+    sys.exit(not result.wasSuccessful())

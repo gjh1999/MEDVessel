@@ -1,0 +1,55 @@
+{
+  "us_poverty": {
+    "year": [
+      1959,
+      1969,
+      1973,
+      1980
+    ],
+    "percent": [
+      22.4,
+      12.1,
+      11.1,
+      13.0
+    ],
+    "source": "https://www2.census.gov/prod2/popscan/p60-179.pdf",
+    "note": "Official poverty measure; selected historical nodes, not causal effects"
+  },
+  "china_age": {
+    "year": [
+      2010,
+      2020
+    ],
+    "age60": [
+      13.26,
+      18.7
+    ],
+    "age65": [
+      8.87,
+      13.5
+    ],
+    "source": "https://www.stats.gov.cn/sj/tjgb/rkpcgb/qgrkpcgb/202302/t20230206_1902005.html",
+    "note": "2010 values reconstructed from reported percentage-point changes"
+  },
+  "china_education": {
+    "year": [
+      2010,
+      2020
+    ],
+    "years": [
+      9.67,
+      10.75
+    ],
+    "population": "age16-59",
+    "source": "https://www.stats.gov.cn/sj/sjjd/202302/t20230202_1896483.html"
+  },
+  "china_medical_2023": {
+    "enrolled_100million": 13.3389,
+    "source": "https://www.nhsa.gov.cn/art/2024/7/25/art_7_13340.html"
+  },
+  "china_pension_2024": {
+    "employee_100million": 5.3452,
+    "resident_100million": 5.383,
+    "source": "https://www.gov.cn/lianbo/bumen/202507/P020250725463987010460.pdf"
+  }
+}
